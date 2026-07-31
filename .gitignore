@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Next.js and generated output
+.next/
+out/
+dist/
+
+# Local environment files (keep the documented example)
+.env
+.env.*
+!.env.example
+
+# Logs and test output
+*.log
+coverage/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Hosting providers
+.vercel/
