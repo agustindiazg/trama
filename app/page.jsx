@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ArrowDown, ArrowRight, Check, Download,
   FileText, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Upload, X
@@ -157,6 +158,26 @@ async function extractPdfText(file) {
   return { text: pages.join("\n"), pages: doc.numPages };
 }
 
+const prefersReducedMotion = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Anima cambios de fase con la View Transition API. `direction` ("expand" |
+// "step" | "collapse") se expone en <html data-vt-direction> para ajustar la
+// animación desde CSS. flushSync es necesario en React 18 para que el DOM esté
+// actualizado antes de que el callback resuelva; es seguro acá porque los call
+// sites son handlers o código post-await, nunca render.
+function withViewTransition(update, direction) {
+  if (typeof document === "undefined" || !document.startViewTransition || prefersReducedMotion()) {
+    update();
+    return;
+  }
+  if (direction) document.documentElement.dataset.vtDirection = direction;
+  const transition = document.startViewTransition(() => { flushSync(update); });
+  transition.finished
+    .catch(() => {})
+    .finally(() => { delete document.documentElement.dataset.vtDirection; });
+}
+
 function App() {
   const inputRef = useRef(null);
   const flowIdRef = useRef(0);
@@ -239,40 +260,42 @@ function App() {
 
   const resetFlow = useCallback(() => {
     flowIdRef.current += 1;
-    setPhase("upload");
-    setDragging(false);
-    setFile(null);
-    setStatus("idle");
-    setError("");
-    setPages(0);
-    setLatex("");
-    setOriginalLatex("");
-    setPdfStatus("idle");
-    setPdfError("");
-    setTargetRole("");
-    setJobInputMode("url");
-    setJobDescription("");
-    setJobUrl("");
-    setAdditionalInformation("");
-    setJobKeywords([]);
-    setEvaluation(null);
-    setOriginalCv(null);
-    setWorkingCv(null);
-    setQueuedContext(null);
-    setJobAnalysis({ requested: false, sourceRead: false, sourceType: null });
-    setFeedback(null);
-    setFeedbackNote("");
-    setWorkflowStep(3);
-    setImprovementAnalysis({ changes: [], questions: [] });
-    setQuestionAnswers({});
-    setQuestionQuickAnswers({});
-    setActiveQuestionIndex(0);
-    setIterationComplete(false);
-    setCoverLetter(null);
-    setCoverLetterStatus("idle");
-    setCoverLetterError("");
-    if (inputRef.current) inputRef.current.value = "";
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    withViewTransition(() => {
+      setPhase("upload");
+      setDragging(false);
+      setFile(null);
+      setStatus("idle");
+      setError("");
+      setPages(0);
+      setLatex("");
+      setOriginalLatex("");
+      setPdfStatus("idle");
+      setPdfError("");
+      setTargetRole("");
+      setJobInputMode("url");
+      setJobDescription("");
+      setJobUrl("");
+      setAdditionalInformation("");
+      setJobKeywords([]);
+      setEvaluation(null);
+      setOriginalCv(null);
+      setWorkingCv(null);
+      setQueuedContext(null);
+      setJobAnalysis({ requested: false, sourceRead: false, sourceType: null });
+      setFeedback(null);
+      setFeedbackNote("");
+      setWorkflowStep(3);
+      setImprovementAnalysis({ changes: [], questions: [] });
+      setQuestionAnswers({});
+      setQuestionQuickAnswers({});
+      setActiveQuestionIndex(0);
+      setIterationComplete(false);
+      setCoverLetter(null);
+      setCoverLetterStatus("idle");
+      setCoverLetterError("");
+      if (inputRef.current) inputRef.current.value = "";
+      window.scrollTo(0, 0);
+    }, "collapse");
   }, []);
 
   const processFile = useCallback(async (candidate) => {
@@ -285,27 +308,29 @@ function App() {
       setError("El archivo supera el límite de 10 MB.");
       return;
     }
-    setError("");
-    setFile(candidate);
-    setPhase("context");
-    setOriginalCv(null);
-    setWorkingCv(null);
-    setQueuedContext(null);
-    setFeedback(null);
-    setFeedbackNote("");
-    setWorkflowStep(3);
-    setImprovementAnalysis({ changes: [], questions: [] });
-    setQuestionAnswers({});
-    setQuestionQuickAnswers({});
-    setActiveQuestionIndex(0);
-    setIterationComplete(false);
-    setCoverLetter(null);
-    setCoverLetterStatus("idle");
-    setCoverLetterError("");
-    setJobKeywords([]);
-    setEvaluation(null);
-    setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
-    setStatus("reading");
+    withViewTransition(() => {
+      setError("");
+      setFile(candidate);
+      setPhase("context");
+      setOriginalCv(null);
+      setWorkingCv(null);
+      setQueuedContext(null);
+      setFeedback(null);
+      setFeedbackNote("");
+      setWorkflowStep(3);
+      setImprovementAnalysis({ changes: [], questions: [] });
+      setQuestionAnswers({});
+      setQuestionQuickAnswers({});
+      setActiveQuestionIndex(0);
+      setIterationComplete(false);
+      setCoverLetter(null);
+      setCoverLetterStatus("idle");
+      setCoverLetterError("");
+      setJobKeywords([]);
+      setEvaluation(null);
+      setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
+      setStatus("reading");
+    }, "expand");
     const flowId = flowIdRef.current;
     try {
       const localPromise = extractPdfText(candidate).catch(() => ({ text: "", pages: 0 }));
@@ -339,22 +364,27 @@ function App() {
         generatedLatex = makeLatex(result.text);
         setLatex(generatedLatex);
         setOriginalLatex(generatedLatex);
-        if (apiError.code !== "CLAUDE_NOT_CONFIGURED") setError(`Claude no estuvo disponible; usamos el extractor local. ${apiError.error || ""}`.trim());
-        setStatus("ready");
-        setPhase("result");
+        withViewTransition(() => {
+          if (apiError.code !== "CLAUDE_NOT_CONFIGURED") setError(`Claude no estuvo disponible; usamos el extractor local. ${apiError.error || ""}`.trim());
+          setStatus("ready");
+          setPhase("result");
+        }, "step");
         return;
       }
       setStatus("context-ready");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
-      setStatus("error");
-      setPhase(err.code === "INVALID_CV_CONTENT" ? "upload" : "context");
-      if (err.code === "INVALID_CV_CONTENT") {
-        setFile(null);
-        if (inputRef.current) inputRef.current.value = "";
-      }
-      setQueuedContext(null);
-      setError(err.message || "No pudimos leer este PDF. Probá con otro archivo.");
+      const backToUpload = err.code === "INVALID_CV_CONTENT";
+      withViewTransition(() => {
+        setStatus("error");
+        setPhase(backToUpload ? "upload" : "context");
+        if (backToUpload) {
+          setFile(null);
+          if (inputRef.current) inputRef.current.value = "";
+        }
+        setQueuedContext(null);
+        setError(err.message || "No pudimos leer este PDF. Probá con otro archivo.");
+      }, backToUpload ? "collapse" : "step");
     }
   }, [jobDescription, jobUrl]);
 
@@ -378,32 +408,36 @@ function App() {
       if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos mejorar el CV.");
       const improvedCv = data.cv;
-      setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
-      setQuestionAnswers({});
-      setQuestionQuickAnswers({});
-      setJobAnalysis(data.jobAnalysis || { requested: false, sourceRead: false, sourceType: null });
       const generatedLatex = makeLatexFromCv(improvedCv);
-      setWorkingCv(improvedCv);
-      setLatex(generatedLatex);
-      setJobKeywords(Array.isArray(improvedCv.jobKeywords) ? improvedCv.jobKeywords : []);
-      setStatus("ready");
-      setPhase("result");
-      setWorkflowStep(3);
-      setIterationComplete(false);
-      setQueuedContext(null);
-      const nextVersion = { id: Date.now(), file: file.name, role: context.targetRole.trim(), mode: "Optimizado", latex: generatedLatex, createdAt: new Date().toISOString() };
-      setVersions((current) => {
-        const updated = [nextVersion, ...current].slice(0, 5);
-        window.localStorage.setItem(VERSION_STORAGE_KEY, JSON.stringify(updated));
-        return updated;
-      });
+      withViewTransition(() => {
+        setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
+        setQuestionAnswers({});
+        setQuestionQuickAnswers({});
+        setJobAnalysis(data.jobAnalysis || { requested: false, sourceRead: false, sourceType: null });
+        setWorkingCv(improvedCv);
+        setLatex(generatedLatex);
+        setJobKeywords(Array.isArray(improvedCv.jobKeywords) ? improvedCv.jobKeywords : []);
+        setStatus("ready");
+        setPhase("result");
+        setWorkflowStep(3);
+        setIterationComplete(false);
+        setQueuedContext(null);
+        const nextVersion = { id: Date.now(), file: file.name, role: context.targetRole.trim(), mode: "Optimizado", latex: generatedLatex, createdAt: new Date().toISOString() };
+        setVersions((current) => {
+          const updated = [nextVersion, ...current].slice(0, 5);
+          window.localStorage.setItem(VERSION_STORAGE_KEY, JSON.stringify(updated));
+          return updated;
+        });
+      }, "step");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
-      setStatus("context-ready");
-      setPhase("context");
-      setQueuedContext(null);
-      if (context.mode === "url" && context.jobUrl.trim()) setJobInputMode("manual");
-      setError(err.message || "No pudimos preparar la mejora.");
+      withViewTransition(() => {
+        setStatus("context-ready");
+        setPhase("context");
+        setQueuedContext(null);
+        if (context.mode === "url" && context.jobUrl.trim()) setJobInputMode("manual");
+        setError(err.message || "No pudimos preparar la mejora.");
+      }, "step");
     }
   }, [file]);
 
@@ -412,17 +446,30 @@ function App() {
     runImprovement(originalCv, queuedContext);
   }, [originalCv, queuedContext, runImprovement, status]);
 
-  const continueWithContext = (event) => {
+  const continueWithContext = (event, skipObjective = false) => {
     event.preventDefault();
-    const context = {
+    const hasObjective = !skipObjective && Boolean(
+      jobInputMode === "url" ? jobUrl.trim() : targetRole.trim()
+    );
+    const context = skipObjective ? {
+      mode: "general",
+      hasObjective: false,
+      jobUrl: "",
+      targetRole: "",
+      additionalInformation: "",
+      allowImprovement: true
+    } : {
       mode: jobInputMode,
+      hasObjective,
       jobUrl: jobInputMode === "url" ? jobUrl : "",
       targetRole: jobInputMode === "manual" ? targetRole : "",
       additionalInformation: jobInputMode === "manual" ? additionalInformation : "",
       allowImprovement: true
     };
-    setQueuedContext(context);
-    setPhase("waiting");
+    withViewTransition(() => {
+      setQueuedContext(context);
+      setPhase("waiting");
+    }, "step");
   };
 
   const applyRevisionFeedback = async () => {
@@ -681,25 +728,29 @@ function App() {
     document.save(`cover-letter-${safeCompany || "empresa"}.pdf`);
   };
 
+  const inFlow = phase !== "upload";
+
   return (
-    <main>
+    <main className={inFlow ? "app-mode" : ""}>
       <nav className="nav">
         <a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a>
         <div className="nav-actions">
-          {phase !== "upload" ? <button type="button" className="restart-flow" onClick={resetFlow}><RotateCcw size={14} /> Empezar de nuevo</button> : null}
-          <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a>
+          {inFlow ? <button type="button" className="restart-flow" onClick={resetFlow}><RotateCcw size={14} /> Empezar de nuevo</button> : null}
+          {!inFlow ? <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a> : null}
         </div>
       </nav>
 
       <section className="hero">
-        <div className="eyebrow"><Sparkles size={14} /> OPTIMIZACIÓN DE CV PARA ATS</div>
-        <h1>Tu experiencia merece<br />llegar a la <em>entrevista.</em></h1>
-        <p className="hero-copy">Analizamos tu CV, mejoramos su redacción y lo preparamos para que los sistemas de selección y los reclutadores entiendan mejor el valor de tu experiencia.</p>
+        {!inFlow ? <>
+          <div className="eyebrow"><Sparkles size={14} /> OPTIMIZACIÓN DE CV PARA ATS</div>
+          <h1>Tu experiencia merece<br />llegar a la <em>entrevista.</em></h1>
+          <p className="hero-copy">Analizamos tu CV, mejoramos su redacción y lo preparamos para que los sistemas de selección y los reclutadores entiendan mejor el valor de tu experiencia.</p>
 
-        <aside className="ats-explainer">
-          <span>¿Qué es un ATS?</span>
-          <p>Es el sistema que muchas empresas usan para recibir, ordenar y filtrar currículums antes de que lleguen a un reclutador.</p>
-        </aside>
+          <aside className="ats-explainer">
+            <span>¿Qué es un ATS?</span>
+            <p>Es el sistema que muchas empresas usan para recibir, ordenar y filtrar currículums antes de que lleguen a un reclutador.</p>
+          </aside>
+        </> : null}
 
         {phase === "upload" ? (
           <div
@@ -746,16 +797,19 @@ function App() {
             <div className="improvement-guarantee"><Check size={15} /><span><strong>La primera mejora está incluida</strong><small>Reescribimos y priorizamos sin inventar experiencia ni métricas.</small></span></div>
             <div className="context-actions">
               <button type="button" className="back-button" onClick={resetFlow}>Cambiar PDF</button>
-              <button type="submit" className="continue-button" disabled={status === "error"}>Continuar<ArrowRight size={16} /></button>
+              <div className="context-primary-actions">
+                <button type="button" className="skip-button" disabled={status === "error"} onClick={(event) => continueWithContext(event, true)}>Saltar este paso</button>
+                <button type="submit" className="continue-button" disabled={status === "error"}>Continuar<ArrowRight size={16} /></button>
+              </div>
             </div>
           </form>
         ) : phase === "waiting" ? (
           <section className="context-step waiting-step" aria-live="polite">
-            <div className="flow-progress" aria-label="Progreso"><span className={originalCv ? "done" : "active"}>{originalCv ? <Check size={13} /> : null} CV</span><i /><span className="done"><Check size={13} /> Objetivo</span><i /><span className={originalCv ? "active" : ""}>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span></div>
+            <div className="flow-progress" aria-label="Progreso"><span className={originalCv ? "done" : "active"}>{originalCv ? <Check size={13} /> : null} CV</span><i /><span className="done"><Check size={13} /> {queuedContext?.hasObjective ? "Objetivo" : "Sin objetivo"}</span><i /><span className={originalCv ? "active" : ""}>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span></div>
             <div className="waiting-orbit"><Sparkles size={24} /></div>
             <span className="kicker">PASO 03 · PREPARANDO EL RECORRIDO</span>
-            <h2>{originalCv ? "Estamos cruzando tu experiencia con el objetivo." : "Seguimos analizando tu CV."}</h2>
-            <p>{originalCv ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente."}</p>
+            <h2>{originalCv ? queuedContext?.hasObjective ? "Estamos cruzando tu experiencia con el objetivo." : "Estamos mejorando tu CV de forma general." : "Seguimos analizando tu CV."}</h2>
+            <p>{originalCv ? queuedContext?.hasObjective ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Nos enfocamos en claridad, evidencia y compatibilidad ATS sin orientarlo a una oportunidad específica." : queuedContext?.hasObjective ? "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente." : "En cuanto termine la lectura del PDF, aplicaremos una mejora general automáticamente."}</p>
             <div className="waiting-lines"><i /><i /><i /></div>
           </section>
         ) : phase === "result" ? (
@@ -769,9 +823,9 @@ function App() {
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : "Tu CV ya está listo."}</h2>
               <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : "Podés revisar y descargar el documento. Si todavía querés cambiar algo, volvé al paso anterior; esta versión ya está preparada para usar."}</p>
               {workflowStep === 4 && iterationComplete && perfectMatch ? <div className="perfect-result"><span><Check size={18} /></span><div><strong>100/100 ATS · 100/100 coincidencia</strong><small>Todos los controles y requisitos detectados están cubiertos.</small></div></div> : null}
-              {workflowStep === 3 || workflowStep === 4 && iterationComplete ? <div className="step-results">
+              {workflowStep === 3 || workflowStep === 4 && iterationComplete ? <div className={`step-results ${atsAudit.matchScore === null ? "without-match" : ""}`}>
                 <article><span>Lectura ATS</span><strong>{atsAudit.technicalScore}<small>/100</small></strong><p>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</p></article>
-                <article><span>Coincidencia</span><strong>{atsAudit.matchScore ?? "—"}<small>/100</small></strong><p>{atsAudit.matchScore === null ? "Sin oferta comparable" : `${atsAudit.matched.length} requisitos respaldados`}</p></article>
+                {atsAudit.matchScore !== null ? <article><span>Coincidencia</span><strong>{atsAudit.matchScore}<small>/100</small></strong><p>{atsAudit.matched.length} requisitos respaldados</p></article> : null}
                 <article><span>Cambios</span><strong>{improvementAnalysis.changes.length || diffSummary.changed}</strong><p>{improvementAnalysis.changes.length || diffSummary.changed ? "mejoras explicadas en esta versión" : "sin cambios de contenido"}</p></article>
               </div> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation"><summary><span>Qué cambió en esta versión</span><small>{improvementAnalysis.changes.length} cambios</small></summary><div>{improvementAnalysis.changes.map((change, index) => <article key={`${change.section}-${index}`}><span>{change.section || "Contenido"}</span><div><small>Antes</small><p>{change.before || "—"}</p></div><div><small>Después</small><p>{change.after || "—"}</p></div><strong>{change.reason}</strong></article>)}</div></details> : null}
@@ -787,7 +841,7 @@ function App() {
                 </div>
               </div> : null}
               <div className="step-feedback">
-                <button className="step-back" onClick={() => workflowStep === 3 ? (setPhase("context"), setStatus("context-ready")) : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
+                <button className="step-back" onClick={() => workflowStep === 3 ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
                 {workflowStep === 3 ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> Esta versión está lista</button><button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button></> : null}
                 {workflowStep === 4 && iterationComplete ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> {perfectMatch ? "Confirmar versión ideal" : "Este CV está listo"}</button>{!perfectMatch ? <button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir iterando</button> : null}</> : null}
                 <a href="#preview-document"><FileText size={15} /> Revisar preview</a>
@@ -796,7 +850,7 @@ function App() {
           </section>
         ) : null}
         {error && <div className="error"><X size={17} />{error}</div>}
-        <div className="trust"><span><LockKeyhole size={15} /> Tus datos están protegidos</span><span><Check size={15} /> No inventamos experiencia</span><span><FileText size={15} /> Preparado para filtros ATS</span></div>
+        {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> Tus datos están protegidos</span><span><Check size={15} /> No inventamos experiencia</span><span><FileText size={15} /> Preparado para filtros ATS</span></div> : null}
       </section>
 
       {status === "ready" && (
@@ -805,7 +859,7 @@ function App() {
           {false ? <>
           <div className="result-head">
             <div><span className="kicker">TU CV MEJORADO ESTÁ LISTO</span><h2>Tu experiencia ahora se entiende mejor.</h2><p>{file.name} · {pages || "—"} {pages === 1 ? "página" : "páginas"} · {allowImprovement && targetRole.trim() ? `preparado para ${targetRole.trim()}` : "preparado para sistemas de selección"}</p></div>
-            <div className="scores"><div className="score" title={`${atsAudit.checks.filter((check) => check.pass).length}/${atsAudit.checks.length} controles de lectura superados`}><strong>{atsAudit.technicalScore}</strong><span>/100<br />compatibilidad ATS</span></div><div className="score match-score" title={atsAudit.matchScore === null ? (jobAnalysis.requested ? "No se detectaron requisitos suficientes para calcular la coincidencia" : "Agregá una oferta para evaluar la coincidencia") : "Cobertura de requisitos de la oferta"}><strong>{atsAudit.matchScore ?? "—"}</strong><span>/100<br />coincidencia oferta</span></div></div>
+            <div className="scores"><div className="score" title={`${atsAudit.checks.filter((check) => check.pass).length}/${atsAudit.checks.length} controles de lectura superados`}><strong>{atsAudit.technicalScore}</strong><span>/100<br />compatibilidad ATS</span></div>{atsAudit.matchScore !== null ? <div className="score match-score" title="Cobertura de requisitos de la oferta"><strong>{atsAudit.matchScore}</strong><span>/100<br />coincidencia oferta</span></div> : null}</div>
           </div>
           {evaluation ? (
             <section className="agent-panel" aria-labelledby="agent-verdict-title">
@@ -904,7 +958,7 @@ function App() {
         </section>
       )}
 
-      <section className="how" id="como-funciona">
+      {!inFlow ? <section className="how" id="como-funciona">
         <div><span className="section-num">01—04</span><h2>De tu CV actual<br />a una versión más competitiva.</h2></div>
         <div className="steps">
           <article><b>01</b><h3>Analizamos</h3><p>Detectamos qué información pueden leer los sistemas de selección y qué partes pierden fuerza.</p></article>
@@ -912,9 +966,9 @@ function App() {
           <article><b>03</b><h3>Adaptamos</h3><p>Si compartís una oferta, priorizamos los requisitos que tu trayectoria realmente respalda.</p></article>
           <article><b>04</b><h3>Revisás</h3><p>Ves el resultado y descargás tu nuevo CV listo para postularte.</p></article>
         </div>
-      </section>
+      </section> : null}
 
-      <footer><a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer>
+      {!inFlow ? <footer><a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer> : null}
     </main>
   );
 }
