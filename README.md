@@ -6,8 +6,10 @@ Trama transforma un CV en PDF en una versión LaTeX limpia y compatible con sist
 
 - Extracción local del texto de archivos PDF.
 - Interpretación visual y estructurada mediante la API de Anthropic.
-- Generación de un CV en LaTeX listo para descargar.
+- Generación de un CV en LaTeX editable y descarga directa en PDF.
 - Auditoría ATS y comparación de palabras clave con una oferta.
+- Jurado multiagente con reclutador, auditor ATS, cuantificador y estratega de posicionamiento.
+- Veredicto consolidado, resumen profesional en tres líneas y plan de mejora priorizado.
 - Historial local de versiones y preferencias en el navegador.
 - Límite de 10 MB por archivo.
 

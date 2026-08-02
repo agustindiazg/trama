@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
+import { validateCvContent } from "../../lib/cv-validation";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const schema = `{
+  "documentValidation": {"isCv": "boolean; true sólo si es un CV real con trayectoria profesional, académica o proyectos suficiente para reconstruirlo", "reason": "explicación breve basada sólo en el documento"},
+  "language": "código ISO 639-1 del idioma principal del CV, por ejemplo en, es, fr o pt",
+  "sectionTitles": {"summary":"título para resumen profesional","experience":"título para experiencia","education":"título para educación","projects":"título para proyectos","skills":"título para habilidades","languages":"título para idiomas"},
   "name": "nombre completo",
   "headline": "título profesional",
   "contact": ["email", "teléfono", "ubicación", "portfolio o LinkedIn"],
@@ -63,7 +67,7 @@ ${preferences.jobSource}
       model,
       max_tokens: 6000,
       temperature: 0,
-      system: "Sos un especialista en CVs y sistemas ATS. Nunca inventes información ni traduzcas el contenido. Reconstruí palabras separadas por tracking tipográfico. Devolvé exclusivamente JSON válido, sin markdown.",
+      system: "Sos un especialista en CVs y sistemas ATS. Primero determiná si el documento realmente es un currículum o resume. Nunca conviertas facturas, libros, contratos, informes, portfolios sin trayectoria, formularios ni otros documentos en un CV. Nunca inventes información ni traduzcas el contenido. Detectá el idioma principal del CV y usalo también para todos los sectionTitles; nunca tomes el idioma de la interfaz o de las instrucciones. Reconstruí palabras separadas por tracking tipográfico. Devolvé exclusivamente JSON válido, sin markdown.",
       messages: [{
         role: "user",
         content: [
@@ -156,6 +160,96 @@ ${JSON.stringify(cv).slice(0, 18000)}
   }
 }
 
+const parseClaudeJson = (payload) => {
+  const text = payload.content?.filter((block) => block.type === "text").map((block) => block.text).join("") || "";
+  return JSON.parse(text.replace(/^```json\s*/i, "").replace(/\s*```$/, ""));
+};
+
+async function callEvaluationAgent({ role, instructions, outputSchema, cv, jobSource, targetRole, model }) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1800,
+      temperature: 0,
+      system: `Sos ${role}. Evaluás CVs con rigor, sin inventar datos ni asumir experiencia que no esté respaldada. Devolvés exclusivamente JSON válido.`,
+      messages: [{
+        role: "user",
+        content: `Evaluá el CV usando estas instrucciones:\n${instructions}\n\nDevolvé exactamente esta estructura:\n${outputSchema}
+${targetRole ? `\nPuesto objetivo: ${targetRole}` : ""}
+${jobSource ? `\n<job_description>\n${jobSource}\n</job_description>` : "\nNo se proporcionó una oferta; evaluá el perfil de forma general."}
+\n<cv_profile>\n${JSON.stringify(cv).slice(0, 18000)}\n</cv_profile>`
+      }]
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error(`${role} no pudo completar la evaluación.`);
+  return parseClaudeJson(await response.json());
+}
+
+async function evaluateCvWithAgents(cv, preferences, model) {
+  const agents = [
+    callEvaluationAgent({
+      role: "un reclutador sénior que decide en 30 segundos si una candidatura avanza",
+      instructions: "Detectá razones concretas para entrevistar o rechazar. Priorizá claridad, credibilidad, relevancia y evidencia. Explicá cada señal en una frase breve.",
+      outputSchema: '{"hireSignals":["..."],"rejectionRisks":[{"risk":"...","severity":"high|medium|low","fix":"..."}],"initialDecision":"advance|maybe|reject","decisionReason":"..."}',
+      cv, jobSource: preferences.jobSource, targetRole: preferences.targetRole, model
+    }),
+    callEvaluationAgent({
+      role: "un auditor especializado en sistemas ATS y selección técnica",
+      instructions: "Evaluá contenido y encaje semántico. No evalúes diseño visual. Cuando haya oferta, diferenciá requisitos respaldados de los ausentes.",
+      outputSchema: '{"strengths":["..."],"gaps":[{"gap":"...","impact":"high|medium|low","recommendation":"..."}],"fitSummary":"..."}',
+      cv, jobSource: preferences.jobSource, targetRole: preferences.targetRole, model
+    }),
+    callEvaluationAgent({
+      role: "un especialista en cuantificación de logros profesionales",
+      instructions: "Encontrá bullets o afirmaciones que ganarían credibilidad con métricas. No propongas números: formulá preguntas concretas para obtener datos reales y sugerí cómo reescribir después de responderlas.",
+      outputSchema: '{"opportunities":[{"original":"...","question":"...","rewriteTemplate":"...","priority":"high|medium|low"}],"alreadyQuantified":["..."]}',
+      cv, jobSource: preferences.jobSource, targetRole: preferences.targetRole, model
+    }),
+    callEvaluationAgent({
+      role: "un estratega de posicionamiento profesional",
+      instructions: "Sintetizá la propuesta de valor sin clichés. El superSummary debe tener exactamente 3 líneas, cada una autosuficiente y respaldada por el CV. Explicá por qué contratar a esta persona.",
+      outputSchema: '{"superSummary":["línea 1","línea 2","línea 3"],"whyHire":"...","differentiators":["..."]}',
+      cv, jobSource: preferences.jobSource, targetRole: preferences.targetRole, model
+    })
+  ];
+
+  const settled = await Promise.allSettled(agents);
+  const reports = settled.flatMap((result, index) => result.status === "fulfilled" ? [{ agent: ["recruiter", "ats", "quantifier", "positioning"][index], report: result.value }] : []);
+  if (!reports.length) return null;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2600,
+      temperature: 0,
+      system: "Sos el juez principal de un panel de evaluación de CVs. Consolidás evidencia, resolvés contradicciones, eliminás duplicados y nunca inventás información. Devolvés sólo JSON válido.",
+      messages: [{
+        role: "user",
+        content: `Consolidá estos informes. La puntuación debe reflejar claridad, evidencia, relevancia y riesgo de rechazo; justificá el número. Conservá el resumen de exactamente 3 líneas. Priorizá hasta 6 cambios accionables.\n\nDevolvé exactamente:\n{"score":0,"decision":"advance|maybe|reject","decisionLabel":"...","scoreReason":"...","superSummary":["...","...","..."],"whyHire":"...","hireSignals":["..."],"rejectionRisks":[{"risk":"...","severity":"high|medium|low","fix":"..."}],"quantificationOpportunities":[{"original":"...","question":"...","rewriteTemplate":"...","priority":"high|medium|low"}],"prioritizedChanges":[{"title":"...","reason":"...","priority":"critical|important|optional"}],"agentsUsed":["..."]}\n\n<cv_profile>\n${JSON.stringify(cv).slice(0, 14000)}\n</cv_profile>\n<agent_reports>\n${JSON.stringify(reports).slice(0, 18000)}\n</agent_reports>`
+      }]
+    }),
+    cache: "no-store"
+  });
+  if (!response.ok) return null;
+  const evaluation = parseClaudeJson(await response.json());
+  evaluation.score = Math.max(0, Math.min(100, Number(evaluation.score) || 0));
+  evaluation.agentsUsed = reports.map(({ agent }) => agent);
+  return evaluation;
+}
+
 const isSafePublicUrl = (value) => {
   try {
     const url = new URL(value);
@@ -232,6 +326,14 @@ export async function POST(request) {
       jobUrl: String(formData.get("jobUrl") || "").trim().slice(0, 500),
       additionalInformation: String(formData.get("additionalInformation") || "").trim().slice(0, 4000)
     };
+    const intent = formData.get("intent") === "extract" ? "extract" : "full";
+    if (intent === "extract") {
+      preferences.allowImprovement = false;
+      preferences.targetRole = "";
+      preferences.jobDescription = "";
+      preferences.jobUrl = "";
+      preferences.additionalInformation = "";
+    }
     const linkedJobText = preferences.jobUrl ? await fetchJobText(preferences.jobUrl) : "";
     preferences.jobSource = linkedJobText || preferences.jobDescription;
     const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
@@ -250,13 +352,42 @@ export async function POST(request) {
 
     const text = payload.content?.filter((block) => block.type === "text").map((block) => block.text).join("") || "";
     const cv = JSON.parse(text.replace(/^```json\s*/i, "").replace(/\s*```$/, ""));
-    if (preferences.jobSource) {
-      const extractedKeywords = await extractKeywordsWithClaude(preferences.jobSource, payload.model || configuredModel, preferences.targetRole);
-      const classifiedKeywords = await classifyKeywordsWithClaude(extractedKeywords, cv, payload.model || configuredModel);
-      cv.jobKeywords = classifiedKeywords.length === extractedKeywords.length ? classifiedKeywords : extractedKeywords;
+    const contentValidation = validateCvContent(cv);
+    if (!contentValidation.valid) {
+      return NextResponse.json({
+        error: "El PDF no parece ser un CV o no contiene suficiente información profesional para crear uno. Subí un CV con experiencia, educación o proyectos y datos de perfil.",
+        code: "INVALID_CV_CONTENT"
+      }, { status: 422 });
     }
+    delete cv.documentValidation;
+    const responseModel = payload.model || configuredModel;
+    if (intent === "extract") {
+      cv.jobKeywords = [];
+      return NextResponse.json({
+        cv,
+        evaluation: null,
+        model: payload.model,
+        usage: payload.usage,
+        jobSource: "",
+        jobAnalysis: { requested: false, sourceRead: false, sourceType: null }
+      });
+    }
+    const keywordPromise = preferences.jobSource
+      ? extractKeywordsWithClaude(preferences.jobSource, responseModel, preferences.targetRole)
+          .then(async (keywords) => {
+            const classified = await classifyKeywordsWithClaude(keywords, cv, responseModel);
+            return classified.length === keywords.length ? classified : keywords;
+          })
+      : Promise.resolve([]);
+    const evaluationPromise = evaluateCvWithAgents(cv, preferences, responseModel).catch((error) => {
+      console.error("Multi-agent evaluation failed:", error);
+      return null;
+    });
+    const [keywords, evaluation] = await Promise.all([keywordPromise, evaluationPromise]);
+    cv.jobKeywords = keywords;
     return NextResponse.json({
       cv,
+      evaluation,
       model: payload.model,
       usage: payload.usage,
       jobSource: preferences.jobSource || "",

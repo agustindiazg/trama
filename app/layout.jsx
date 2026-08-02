@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Trama — CVs que atraviesan filtros",
-  description: "Transformá tu CV en PDF a un documento LaTeX limpio y compatible con ATS."
+  title: "Trama — Tu experiencia, mejor presentada",
+  description: "Mejorá tu CV para que los sistemas de selección puedan leerlo mejor y aumentá tus posibilidades de llegar a una entrevista."
 };
 
 export const viewport = {
