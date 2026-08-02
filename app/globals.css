@@ -81,6 +81,21 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .dropzone p { margin: 0 0 18px; font-size: 14px; color: #657068; }
 .dropzone button { border: 0; background: var(--ink); color: var(--paper); display: flex; align-items: center; gap: 9px; padding: 12px 19px; cursor: pointer; }
 .dropzone small { font: 400 10px "DM Mono"; color: #69736c; margin-top: 18px; }
+.saved-resume { width: min(710px, 100%); margin: 0 auto; padding: 34px; text-align: left; border: 1px solid var(--ink); background: rgba(255,255,255,.32); box-shadow: 12px 12px 0 rgba(23,35,29,.08); }
+.saved-resume-icon { width: 54px; height: 54px; margin-bottom: 22px; position: relative; display: grid; place-items: center; border: 1px solid var(--ink); background: var(--paper); }
+.saved-resume-icon span { width: 22px; height: 22px; position: absolute; right: -8px; bottom: -8px; display: grid; place-items: center; color: var(--ink); border: 1px solid var(--ink); border-radius: 50%; background: var(--acid); }
+.saved-resume > .kicker { color: #657068; }
+.saved-resume h2 { margin: 8px 0 22px; font-size: clamp(30px, 4.5vw, 46px); line-height: 1.02; letter-spacing: -.055em; }
+.saved-resume-file { padding: 15px 16px; border: 1px solid var(--line); background: rgba(255,255,255,.42); }
+.saved-resume-file strong, .saved-resume-file small { display: block; }
+.saved-resume-file strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.saved-resume-file small { margin-top: 5px; color: #657068; font: 400 10px "DM Mono"; }
+.saved-resume-actions { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 9px; }
+.saved-resume-actions button { min-height: 44px; padding: 0 17px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 1px solid var(--ink); font-size: 12px; font-weight: 600; }
+.saved-resume-actions .continue-saved { color: var(--paper); background: var(--ink); }
+.saved-resume-actions .replace-saved { color: var(--ink); background: transparent; }
+.saved-resume-actions button:hover { color: var(--ink); background: var(--acid); }
+.saved-resume-note { display: block; margin-top: 14px; color: #69736c; font: 400 9px/1.5 "DM Mono"; }
 .progress { width: 260px; height: 3px; background: #d4d3c9; overflow: hidden; }
 .progress span { height: 100%; width: 45%; display: block; background: var(--ink); animation: loading 1.1s ease-in-out infinite alternate; }
 @keyframes loading { from { transform: translateX(-100%); } to { transform: translateX(220%); } }
@@ -488,7 +503,7 @@ html[data-vt-direction="step"] ::view-transition-new(root) { animation-duration:
   main.app-mode.preview-open .workspace-bar { flex-wrap: wrap; gap: 8px; }
   main.app-mode.preview-open .workspace-bar .back-to-flow { display: none; }
   main.app-mode.preview-open .paper-wrap { padding: 18px; }
-  main.app-mode.preview-open .latex-paper { padding: 40px 34px; }
+  main.app-mode.preview-open .latex-paper { width: 100%; padding: 40px 34px; }
   main.app-mode.preview-open .cover-letter-document { padding-inline: 14px; }
   main.app-mode.preview-open .cover-letter-document article { width: 100%; padding: 34px 30px; }
   main.app-mode.preview-open .cover-letter-actions { width: 100%; }
@@ -513,6 +528,8 @@ html[data-vt-direction="drawer"] ::view-transition-new(root) { animation-duratio
   .restart-flow { width: 38px; height: 38px; padding: 0; justify-content: center; font-size: 0; }
   .restart-flow svg { width: 16px; height: 16px; }
   .hero { padding-top: 62px; }
+  .saved-resume { padding: 25px 20px; }
+  .saved-resume-actions { display: grid; }
   h1 { font-size: clamp(48px, 15vw, 72px); }
   .ats-explainer { grid-template-columns: 1fr; gap: 7px; }
   .result { padding: 75px 20px; }

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
 import { getCvSectionTitles } from "./lib/cv-language";
+import { loadSavedResume, saveResume } from "./lib/resume-storage";
 const escapeLatex = (value) => value
   .replaceAll("\\", "\\textbackslash{}")
   .replaceAll("&", "\\&").replaceAll("%", "\\%").replaceAll("$", "\\$")
@@ -131,6 +132,7 @@ ${blocks.join("\n")}
 
 const SETTINGS_STORAGE_KEY = "trama:conversion-settings";
 const VERSION_STORAGE_KEY = "trama:cv-versions";
+const savedResumeDateFormatter = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" });
 
 async function extractPdfText(file) {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -220,6 +222,13 @@ function App() {
   const [coverLetterStatus, setCoverLetterStatus] = useState("idle");
   const [coverLetterError, setCoverLetterError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(true);
+  const [savedResume, setSavedResume] = useState(null);
+  const [savedResumeHydrated, setSavedResumeHydrated] = useState(false);
+
+  useEffect(() => {
+    setSavedResume(loadSavedResume(window.localStorage));
+    setSavedResumeHydrated(true);
+  }, []);
 
   useEffect(() => {
     try {
@@ -261,6 +270,30 @@ function App() {
       additionalInformation
     }));
   }, [targetRole, jobDescription, jobUrl, additionalInformation, settingsHydrated]);
+
+  const useSavedResume = useCallback(() => {
+    if (!savedResume) return;
+    const savedFile = {
+      name: savedResume.sourceFileName,
+      size: savedResume.sourceFileSize,
+      type: "application/pdf"
+    };
+    const generatedLatex = makeLatexFromCv(savedResume.content);
+    withViewTransition(() => {
+      setFile(savedFile);
+      setPages(savedResume.pages);
+      setOriginalCv(savedResume.content);
+      setWorkingCv(savedResume.content);
+      setOriginalLatex(generatedLatex);
+      setLatex(generatedLatex);
+      setJobKeywords(Array.isArray(savedResume.content.jobKeywords) ? savedResume.content.jobKeywords : []);
+      setEvaluation(null);
+      setError("");
+      setStatus("context-ready");
+      setPhase("context");
+      setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
+    }, "expand");
+  }, [jobDescription, jobUrl, savedResume]);
 
   const resetFlow = useCallback(() => {
     flowIdRef.current += 1;
@@ -414,7 +447,14 @@ function App() {
       if (!response.ok) throw new Error(data.error || "No pudimos mejorar el CV.");
       const improvedCv = data.cv;
       const generatedLatex = makeLatexFromCv(improvedCv);
+      let persistedResume = null;
+      try {
+        persistedResume = saveResume(window.localStorage, { file, pages, content: improvedCv });
+      } catch {
+        // La mejora sigue disponible aunque el navegador bloquee el almacenamiento local.
+      }
       withViewTransition(() => {
+        if (persistedResume) setSavedResume(persistedResume);
         setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
         setQuestionAnswers({});
         setQuestionQuickAnswers({});
@@ -506,7 +546,14 @@ function App() {
       if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos aplicar el feedback.");
       const generatedLatex = makeLatexFromCv(data.cv);
+      let persistedResume = null;
+      try {
+        persistedResume = saveResume(window.localStorage, { file, pages, content: data.cv });
+      } catch {
+        // La revisión sigue disponible aunque el navegador bloquee el almacenamiento local.
+      }
       withViewTransition(() => {
+        if (persistedResume) setSavedResume(persistedResume);
         setWorkingCv(data.cv);
         setLatex(generatedLatex);
         setJobKeywords(Array.isArray(data.cv.jobKeywords) ? data.cv.jobKeywords : []);
@@ -766,7 +813,22 @@ function App() {
           </aside>
         </> : null}
 
-        {phase === "upload" ? (
+        {phase === "upload" ? (savedResumeHydrated ? savedResume ? (
+          <section className="saved-resume" aria-labelledby="saved-resume-title">
+            <div className="saved-resume-icon"><FileText size={28} strokeWidth={1.6} /><span><Check size={12} /></span></div>
+            <span className="kicker">CV GUARDADO EN ESTE DISPOSITIVO</span>
+            <h2 id="saved-resume-title">Seguí trabajando sobre tu CV.</h2>
+            <div className="saved-resume-file">
+              <div><strong>{savedResume.sourceFileName}</strong><small>{savedResume.pages ? `${savedResume.pages} ${savedResume.pages === 1 ? "página" : "páginas"} · ` : ""}Actualizado el {savedResumeDateFormatter.format(new Date(savedResume.updatedAt))}</small></div>
+            </div>
+            <div className="saved-resume-actions">
+              <button type="button" className="continue-saved" onClick={useSavedResume}>Usar este CV <ArrowRight size={16} /></button>
+              <button type="button" className="replace-saved" onClick={() => inputRef.current?.click()}><Upload size={15} /> Reemplazar PDF</button>
+            </div>
+            <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
+            <small className="saved-resume-note">El nuevo PDF reemplazará este CV solo cuando termine de procesarse correctamente.</small>
+          </section>
+        ) : (
           <div
             className={`dropzone ${dragging ? "dragging" : ""}`}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -781,7 +843,7 @@ function App() {
             <div className="file-icon"><FileText size={31} strokeWidth={1.6} /><span>PDF</span></div>
             <h2>Empezá por tu CV actual</h2><p>Subilo en PDF y te mostramos cómo mejorarlo</p><button><Upload size={17} /> Mejorar mi CV</button><small>Máximo 10 MB · Lo procesamos solo para generar tu mejora</small>
           </div>
-        ) : phase === "context" ? (
+        ) : null) : phase === "context" ? (
           <form className="context-step" onSubmit={continueWithContext}>
             <div className="flow-progress" aria-label="Progreso">
               <span className="done"><Check size={13} /> CV</span><i /><span className="active">02 Objetivo</span><i /><span>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span>
