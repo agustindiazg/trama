@@ -145,11 +145,9 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .waiting-orbit { width: 72px; height: 72px; margin: 48px auto 0; display: grid; place-items: center; position: relative; color: var(--ink); border: 1px solid var(--ink); border-radius: 50%; }
 .waiting-orbit::after { content: ""; position: absolute; width: 9px; height: 9px; top: -5px; left: 31px; border-radius: 50%; background: var(--acid); border: 1px solid var(--ink); transform-origin: 4px 40px; animation: orbit 1.8s linear infinite; }
 @keyframes orbit { to { transform: rotate(360deg); } }
-.waiting-lines { width: min(310px, 68%); margin: 30px auto 0; display: grid; gap: 7px; }
+.waiting-lines { width: min(310px, 68%); margin: 30px auto 0; }
 .waiting-lines i { height: 3px; overflow: hidden; background: rgba(23,35,29,.12); }
 .waiting-lines i::after { content: ""; width: 38%; height: 100%; display: block; background: var(--ink); animation: loading 1.1s ease-in-out infinite alternate; }
-.waiting-lines i:nth-child(2)::after { animation-delay: .15s; }
-.waiting-lines i:nth-child(3)::after { animation-delay: .3s; }
 .improvement-content { padding: 44px 34px 38px; }
 .improvement-content h2 { max-width: 640px; margin: 9px 0 12px; font-size: clamp(31px, 4.5vw, 50px); line-height: 1.02; letter-spacing: -.055em; }
 .improvement-content > p { max-width: 620px; margin: 0; color: #5d6861; font-size: 13px; line-height: 1.6; }
@@ -160,6 +158,13 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .step-feedback button:disabled { cursor: wait; opacity: .48; }
 .step-feedback .step-back { border-color: #8d968f; color: #5d6861; }
 .step-feedback a { margin-left: auto; color: var(--paper); background: var(--ink); }
+.step-feedback button.preview-link { margin-left: auto; color: var(--paper); background: var(--ink); }
+.step-feedback button.preview-link:hover { color: var(--acid); background: var(--ink); }
+.step-feedback .preview-link.secondary-preview { margin-left: auto; color: var(--ink); border-color: #8d968f; background: transparent; }
+.step-feedback .preview-link.secondary-preview:hover { color: var(--ink); background: rgba(23,35,29,.06); }
+.step-feedback .final-download { color: var(--paper); background: var(--ink); }
+.step-feedback .final-download:hover { color: var(--ink); background: var(--acid); }
+.final-download-error { margin-top: 18px; padding: 11px 13px; display: flex; align-items: center; gap: 8px; color: #6f3029; border: 1px solid #b78b82; background: #f6e7e1; font-size: 11px; }
 .step-results { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); }
 .step-results.without-match { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .step-results article { min-width: 0; padding: 18px; background: rgba(255,255,255,.28); }
@@ -382,18 +387,17 @@ textarea { display: block; resize: vertical; width: 100%; min-height: 470px; pad
 .cover-letter-intro small { color: var(--acid); font: 500 9px "DM Mono"; letter-spacing: .07em; }
 .cover-letter-intro h3 { margin: 5px 0 4px; color: var(--paper); font-size: 20px; letter-spacing: -.025em; }
 .cover-letter-intro p { max-width: 610px; margin: 0; color: #aeb6b1; font-size: 11px; line-height: 1.55; }
+.cover-letter-primary-actions { display: flex; align-items: center; gap: 8px; }
 .cover-letter button { min-height: 40px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; color: var(--ink); border: 1px solid var(--acid); background: var(--acid); cursor: pointer; font-size: 11px; font-weight: 700; }
+.cover-letter .regenerate-letter { color: var(--paper); border-color: #667269; background: transparent; }
 .cover-letter button:disabled { cursor: wait; opacity: .6; }
 .cover-letter-error { padding: 11px 16px; display: flex; align-items: center; gap: 8px; color: #ffd6cf; border-top: 1px solid #7d3d36; background: #351d1a; font-size: 11px; }
 .cover-letter-error button { min-height: 29px; margin-left: auto; padding-inline: 10px; color: #ffd6cf; border-color: #a75e54; background: transparent; }
-.cover-letter-document { padding: 0 22px 22px; border-top: 1px solid #465149; }
-.cover-letter-meta { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 15px; color: #919c95; font: 500 9px "DM Mono"; }
+.cover-letter-document { margin-top: 22px; padding: 22px; background: #29332d; background-image: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px); background-size: 14px 14px; }
 .cover-letter-document article { width: min(100%, 680px); margin: 0 auto; padding: 46px 54px; color: #18231d; background: #fffefa; box-shadow: 0 12px 32px rgba(0,0,0,.25); font: 400 12px/1.65 Georgia, serif; }
 .cover-letter-document article h4 { margin: 0; font: 700 23px/1.2 Georgia, serif; }
 .cover-letter-document article p { margin: 18px 0 0; }
 .cover-letter-document article .letter-target { margin-top: 4px; color: #5c6861; font-size: 10px; }
-.cover-letter-actions { width: min(100%, 680px); margin: 13px auto 0; display: flex; justify-content: flex-end; gap: 8px; }
-.cover-letter-actions button:first-child { color: var(--paper); border-color: #667269; background: transparent; }
 
 .how { padding: 120px clamp(24px, 8vw, 120px); display: grid; grid-template-columns: .8fr 1.2fr; gap: 9vw; border-bottom: 1px solid var(--line); }
 .section-num { font: 400 10px "DM Mono"; }
@@ -406,7 +410,7 @@ footer p { font-family: "Newsreader", serif; font-style: italic; font-size: 18px
 footer > span { font: 400 9px "DM Mono"; text-transform: uppercase; }
 
 /* ---- Modo app: la superficie del flujo ocupa el viewport ---- */
-.app-mode .hero { display: flex; flex-direction: column; align-items: center; padding: 44px 24px 80px; }
+.app-mode .hero { display: flex; flex-direction: column; align-items: center; padding: 44px 24px; }
 .app-mode .waiting-step { margin-block: auto; }
 
 /* ---- View Transitions: morph dropzone <-> panel del flujo ---- */
@@ -433,6 +437,75 @@ html[data-vt-direction="collapse"] ::view-transition-group(app-surface) { animat
 html[data-vt-direction="step"] ::view-transition-group(app-surface),
 html[data-vt-direction="step"] ::view-transition-old(root),
 html[data-vt-direction="step"] ::view-transition-new(root) { animation-duration: .3s; }
+
+/* ---- Drawer de preview (solo desktop ancho) ---- */
+@media (min-width: 1180px) { .mobile-only { display: none !important; } }
+@media (max-width: 1179.98px) { .desktop-only { display: none !important; } }
+
+@media (min-width: 1180px) {
+  /* En modo app la aplicación ocupa el viewport exacto: la página nunca
+     scrollea; el scroll vive dentro de cada columna (panel y drawer). */
+  main.app-mode {
+    display: grid;
+    height: 100dvh;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "nav" "hero";
+  }
+  main.app-mode.preview-open {
+    grid-template-columns: minmax(0, 1fr) clamp(480px, 42vw, 680px);
+    grid-template-areas: "nav drawer" "hero drawer";
+  }
+  main.app-mode > .nav { grid-area: nav; }
+  main.app-mode > .hero {
+    grid-area: hero;
+    min-width: 0; min-height: 0;
+    overflow-x: hidden; overflow-y: auto;
+    /* safe center: panel centrado vertical cuando entra en el alto
+       disponible, alineado arriba y scrolleable cuando no. */
+    justify-content: safe center;
+  }
+  main.app-mode.preview-open > .result { grid-area: drawer; min-width: 0; }
+
+  /* Cerrado en desktop: fuera del layout. En mobile la sección apilada
+     se muestra siempre, sin importar previewOpen. */
+  main.app-mode:not(.preview-open) > .result { display: none; }
+
+  /* Grupo propio de view transition: entra/sale deslizando en vez de
+     participar del crossfade del root. Solo existe en desktop. */
+  .app-mode .result { view-transition-name: preview-drawer; }
+
+  main.app-mode.preview-open .result {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 22px 22px 44px;
+    border-left: 1px solid #46534a;
+  }
+  /* El stepper es redundante junto al panel y sus márgenes negativos están
+     acoplados al padding de 100px que acá no existe. */
+  main.app-mode.preview-open .result-stepper { display: none; }
+  main.app-mode.preview-open .workspace-bar { flex-wrap: wrap; gap: 8px; }
+  main.app-mode.preview-open .workspace-bar .back-to-flow { display: none; }
+  main.app-mode.preview-open .paper-wrap { padding: 18px; }
+  main.app-mode.preview-open .latex-paper { padding: 40px 34px; }
+  main.app-mode.preview-open .cover-letter-document { padding-inline: 14px; }
+  main.app-mode.preview-open .cover-letter-document article { width: 100%; padding: 34px 30px; }
+  main.app-mode.preview-open .cover-letter-actions { width: 100%; }
+}
+
+::view-transition-group(preview-drawer) { animation-duration: .45s; animation-timing-function: cubic-bezier(.32, .72, .18, 1); }
+::view-transition-image-pair(preview-drawer) { overflow: clip; }
+::view-transition-old(preview-drawer),
+::view-transition-new(preview-drawer) { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+::view-transition-new(preview-drawer):only-child { animation: drawer-in .45s cubic-bezier(.32, .72, .18, 1) both; }
+::view-transition-old(preview-drawer):only-child { animation: drawer-out .35s cubic-bezier(.5, 0, .2, 1) both; }
+@keyframes drawer-in  { from { transform: translateX(100%); } }
+@keyframes drawer-out { to   { transform: translateX(100%); } }
+
+html[data-vt-direction="drawer"] ::view-transition-group(app-surface),
+html[data-vt-direction="drawer"] ::view-transition-old(root),
+html[data-vt-direction="drawer"] ::view-transition-new(root) { animation-duration: .35s; }
 
 @media (max-width: 760px) {
   .nav { height: 68px; }
@@ -464,7 +537,8 @@ html[data-vt-direction="step"] ::view-transition-new(root) { animation-duration:
   .paper-wrap { padding: 16px; }
   .latex-paper { min-height: 660px; padding: 36px 30px; }
   .cover-letter-intro { grid-template-columns: 42px 1fr; }
-  .cover-letter-intro > button { grid-column: 1 / -1; width: 100%; }
+  .cover-letter-primary-actions { grid-column: 1 / -1; width: 100%; }
+  .cover-letter-primary-actions button { flex: 1; }
   .cover-letter-document { padding-inline: 14px; }
   .cover-letter-document article { padding: 34px 27px; }
   .cover-letter-actions { flex-direction: column; }

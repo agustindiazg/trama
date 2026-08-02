@@ -173,6 +173,9 @@ function withViewTransition(update, direction) {
   }
   if (direction) document.documentElement.dataset.vtDirection = direction;
   const transition = document.startViewTransition(() => { flushSync(update); });
+  // ready y finished rechazan cuando una transición se saltea (p. ej. dos
+  // seguidas); sin estos catch queda un "Uncaught (in promise)" en consola.
+  transition.ready?.catch(() => {});
   transition.finished
     .catch(() => {})
     .finally(() => { delete document.documentElement.dataset.vtDirection; });
@@ -216,6 +219,7 @@ function App() {
   const [coverLetter, setCoverLetter] = useState(null);
   const [coverLetterStatus, setCoverLetterStatus] = useState("idle");
   const [coverLetterError, setCoverLetterError] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -293,6 +297,7 @@ function App() {
       setCoverLetter(null);
       setCoverLetterStatus("idle");
       setCoverLetterError("");
+      setPreviewOpen(true);
       if (inputRef.current) inputRef.current.value = "";
       window.scrollTo(0, 0);
     }, "collapse");
@@ -422,6 +427,7 @@ function App() {
         setWorkflowStep(3);
         setIterationComplete(false);
         setQueuedContext(null);
+        setPreviewOpen(true);
         const nextVersion = { id: Date.now(), file: file.name, role: context.targetRole.trim(), mode: "Optimizado", latex: generatedLatex, createdAt: new Date().toISOString() };
         setVersions((current) => {
           const updated = [nextVersion, ...current].slice(0, 5);
@@ -485,8 +491,10 @@ function App() {
     if (feedbackNote.trim()) revisionParts.push(`Información o pedido adicional del usuario:\n${feedbackNote.trim()}`);
     const revisionRequest = revisionParts.join("\n\n");
     if (!workingCv || !revisionRequest) return;
-    setStatus("revising");
-    setError("");
+    withViewTransition(() => {
+      setStatus("revising");
+      setError("");
+    }, "drawer");
     const flowId = flowIdRef.current;
     try {
       const response = await fetch("/api/improve-cv", {
@@ -498,21 +506,26 @@ function App() {
       if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos aplicar el feedback.");
       const generatedLatex = makeLatexFromCv(data.cv);
-      setWorkingCv(data.cv);
-      setLatex(generatedLatex);
-      setJobKeywords(Array.isArray(data.cv.jobKeywords) ? data.cv.jobKeywords : []);
-      setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
-      setQuestionAnswers({});
-      setQuestionQuickAnswers({});
-      setFeedbackNote("");
-      setFeedback(null);
-      setWorkflowStep(4);
-      setIterationComplete(true);
-      setStatus("ready");
+      withViewTransition(() => {
+        setWorkingCv(data.cv);
+        setLatex(generatedLatex);
+        setJobKeywords(Array.isArray(data.cv.jobKeywords) ? data.cv.jobKeywords : []);
+        setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
+        setQuestionAnswers({});
+        setQuestionQuickAnswers({});
+        setFeedbackNote("");
+        setFeedback(null);
+        setWorkflowStep(4);
+        setIterationComplete(true);
+        setStatus("ready");
+        setPreviewOpen(true);
+      }, "drawer");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
-      setStatus("ready");
-      setError(err.message || "No pudimos aplicar el feedback.");
+      withViewTransition(() => {
+        setStatus("ready");
+        setError(err.message || "No pudimos aplicar el feedback.");
+      }, "drawer");
     }
   };
 
@@ -729,9 +742,10 @@ function App() {
   };
 
   const inFlow = phase !== "upload";
+  const togglePreview = () => withViewTransition(() => setPreviewOpen((open) => !open), "drawer");
 
   return (
-    <main className={inFlow ? "app-mode" : ""}>
+    <main className={`${inFlow ? "app-mode" : ""}${status === "ready" && previewOpen ? " preview-open" : ""}`}>
       <nav className="nav">
         <a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a>
         <div className="nav-actions">
@@ -810,7 +824,7 @@ function App() {
             <span className="kicker">PASO 03 · PREPARANDO EL RECORRIDO</span>
             <h2>{originalCv ? queuedContext?.hasObjective ? "Estamos cruzando tu experiencia con el objetivo." : "Estamos mejorando tu CV de forma general." : "Seguimos analizando tu CV."}</h2>
             <p>{originalCv ? queuedContext?.hasObjective ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Nos enfocamos en claridad, evidencia y compatibilidad ATS sin orientarlo a una oportunidad específica." : queuedContext?.hasObjective ? "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente." : "En cuanto termine la lectura del PDF, aplicaremos una mejora general automáticamente."}</p>
-            <div className="waiting-lines"><i /><i /><i /></div>
+            <div className="waiting-lines"><i /></div>
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
@@ -818,10 +832,23 @@ function App() {
               <span className="done"><Check size={13} /> CV</span><i /><span className="done"><Check size={13} /> Objetivo</span><i /><span className={workflowStep > 3 ? "done" : "active"}>{workflowStep > 3 ? <Check size={13} /> : null} 03 CV mejorado</span><i /><span className={workflowStep === 4 ? "active" : workflowStep > 4 ? "done" : ""}>04 Seguir mejorando</span><i /><span className={workflowStep === 5 ? "active" : ""}>05 Final</span>
             </div>
             <div className={`improvement-content ${status === "revising" ? "is-loading" : ""}`}>
-              {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /><i /><i /></div></div> : null}
+              {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <span className="kicker">{workflowStep === 3 ? "PASO 03 · CV MEJORADO" : workflowStep === 4 ? iterationComplete ? perfectMatch ? "PASO 04 · OBJETIVO ALCANZADO" : "PASO 04 · NUEVA ITERACIÓN" : "PASO 04 · SEGUIR MEJORANDO" : "PASO 05 · CONFIRMACIÓN FINAL"}</span>
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : "Tu CV ya está listo."}</h2>
-              <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : "Podés revisar y descargar el documento. Si todavía querés cambiar algo, volvé al paso anterior; esta versión ya está preparada para usar."}</p>
+              <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : "Descargá el PDF listo para usar. Si querés comprobarlo antes o todavía necesitás cambiar algo, podés revisar el preview o volver al paso anterior."}</p>
+              {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
+                <div className="cover-letter-intro">
+                  <span><Mail size={18} /></span>
+                  <div><small>EXTRA · OPCIONAL</small><h3 id="cover-letter-title">¿También necesitás una cover letter?</h3><p>{coverLetter ? `Tu carta para ${coverLetter.company} ya está lista para descargar.` : "Usamos la empresa, el puesto y los requisitos de la oferta que compartiste para preparar una carta coherente con este CV."}</p></div>
+                  <div className="cover-letter-primary-actions">
+                    {!coverLetter ? <button type="button" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={15} /> {coverLetterStatus === "generating" ? "Leyendo la oferta…" : "Generar cover letter"}</button> : <>
+                      <button type="button" className="regenerate-letter" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={14} /> {coverLetterStatus === "generating" ? "Regenerando…" : "Regenerar"}</button>
+                      <button type="button" className="download-letter" onClick={downloadCoverLetter}><Download size={14} /> Descargar cover letter</button>
+                    </>}
+                  </div>
+                </div>
+                {coverLetterError ? <div className="cover-letter-error"><X size={14} />{coverLetterError}<button type="button" onClick={generateCoverLetter}>Reintentar</button></div> : null}
+              </section> : null}
               {workflowStep === 4 && iterationComplete && perfectMatch ? <div className="perfect-result"><span><Check size={18} /></span><div><strong>100/100 ATS · 100/100 coincidencia</strong><small>Todos los controles y requisitos detectados están cubiertos.</small></div></div> : null}
               {workflowStep === 3 || workflowStep === 4 && iterationComplete ? <div className={`step-results ${atsAudit.matchScore === null ? "without-match" : ""}`}>
                 <article><span>Lectura ATS</span><strong>{atsAudit.technicalScore}<small>/100</small></strong><p>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</p></article>
@@ -840,11 +867,14 @@ function App() {
                   {activeQuestionIndex < iterationSteps.length - 1 ? <><button type="button" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Omitir</button><button type="button" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Siguiente <ArrowRight size={14} /></button></> : <button type="button" onClick={() => (feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim())) ? applyRevisionFeedback() : setIterationComplete(true)}>{feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim()) ? "Generar nueva versión" : "Omitir y continuar"}</button>}
                 </div>
               </div> : null}
+              {workflowStep === 5 && pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
               <div className="step-feedback">
                 <button className="step-back" onClick={() => workflowStep === 3 ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
                 {workflowStep === 3 ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> Esta versión está lista</button><button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button></> : null}
                 {workflowStep === 4 && iterationComplete ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> {perfectMatch ? "Confirmar versión ideal" : "Este CV está listo"}</button>{!perfectMatch ? <button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir iterando</button> : null}</> : null}
-                <a href="#preview-document"><FileText size={15} /> Revisar preview</a>
+                <a className={`preview-link mobile-only ${workflowStep === 5 ? "secondary-preview" : ""}`} href="#preview-document"><FileText size={15} /> Revisar preview</a>
+                <button type="button" className={`preview-link desktop-only ${workflowStep === 5 ? "secondary-preview" : ""}`} aria-expanded={previewOpen} onClick={togglePreview}><FileText size={15} /> {previewOpen ? "Ocultar preview" : "Revisar preview"}</button>
+                {workflowStep === 5 ? <button type="button" className="final-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar PDF"}</button> : null}
               </div>
             </div>
           </section>
@@ -915,16 +945,8 @@ function App() {
           </div>
           </> : null}
           <div className="workspace" id="preview-document">
-            <div className="workspace-bar">
-              <div className="workspace-title"><FileText size={14} /> Vista previa de tu CV mejorado</div>
-              <div className="workspace-actions">
-                {workflowStep === 5 ? <button className="download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar CV mejorado"}</button> : <a className="back-to-flow" href="#flujo-mejoras">Volver a la decisión</a>}
-              </div>
-            </div>
-            {pdfError && <div className="pdf-error" role="alert"><X size={14} />{pdfError}</div>}
             <div className="workspace-content preview-only">
               <div className="preview-pane">
-                <div className="pane-label"><i /> DOCUMENTO FINAL · A4</div>
                 <div className="paper-wrap">
                   <article className="latex-paper">
                     <h1>{preview.name}</h1>
@@ -941,20 +963,9 @@ function App() {
               </div>
             </div>
           </div>
-          {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
-            <div className="cover-letter-intro">
-              <span><Mail size={18} /></span>
-              <div><small>ÚLTIMO PASO · OPCIONAL</small><h3 id="cover-letter-title">¿También necesitás una cover letter?</h3><p>Usamos la empresa, el puesto y los requisitos de la oferta que compartiste para preparar una carta coherente con este CV.</p></div>
-              {!coverLetter ? <button type="button" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={15} /> {coverLetterStatus === "generating" ? "Leyendo la oferta…" : "Generar cover letter"}</button> : null}
-            </div>
-            {coverLetterError ? <div className="cover-letter-error"><X size={14} />{coverLetterError}<button type="button" onClick={generateCoverLetter}>Reintentar</button></div> : null}
-            {coverLetter ? <div className="cover-letter-document">
-              <div className="cover-letter-meta"><span>PARA {coverLetter.company}</span><span>{coverLetter.role}</span></div>
+          {workflowStep === 5 && coverLetter ? <section className="cover-letter-document" aria-label="Vista previa de la cover letter">
               <article><h4>{coverLetter.senderName}</h4><p className="letter-target">{coverLetter.role} · {coverLetter.company}</p><p>{coverLetter.greeting}</p>{coverLetter.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}<p>{coverLetter.closing}<br /><strong>{coverLetter.senderName}</strong></p></article>
-              <div className="cover-letter-actions"><button type="button" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={14} /> Regenerar</button><button type="button" className="download-letter" onClick={downloadCoverLetter}><Download size={14} /> Descargar PDF</button></div>
-            </div> : null}
           </section> : null}
-          {workflowStep === 5 ? <button className="new-file" onClick={resetFlow}><RotateCcw size={16} /> Empezar de nuevo</button> : null}
         </section>
       )}
 
