@@ -28,6 +28,10 @@ body::before {
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -.04em; }
 .brand-mark { width: 29px; height: 29px; border-radius: 50%; display: grid; place-items: center; color: var(--paper); background: var(--ink); font-family: "Newsreader", serif; font-style: italic; }
 .nav-link { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
+.nav-actions { display: flex; align-items: center; gap: clamp(12px, 2vw, 24px); }
+.restart-flow { padding: 8px 10px; display: inline-flex; align-items: center; gap: 7px; color: var(--ink); border: 1px solid var(--line); background: rgba(255,255,255,.2); cursor: pointer; font-size: 12px; font-weight: 600; transition: background .15s, border-color .15s; }
+.restart-flow:hover { border-color: var(--ink); background: var(--acid); }
+.restart-flow:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 .hero { min-height: calc(100vh - 82px); padding: 82px 24px 64px; text-align: center; position: relative; overflow: hidden; }
 .hero::before, .hero::after { content: ""; position: absolute; border: 1px solid var(--line); border-radius: 50%; pointer-events: none; }
@@ -369,6 +373,24 @@ textarea { display: block; resize: vertical; width: 100%; min-height: 470px; pad
 .latex-paper section .paper-bullet { position: relative; padding-left: 11px; }
 .latex-paper section .paper-bullet::before { content: ""; position: absolute; left: 1px; top: .58em; width: 3px; height: 3px; border-radius: 50%; background: #4b6355; }
 .new-file { margin: 25px auto 0; color: var(--paper); border: 0; border-bottom: 1px solid #758078; padding: 7px 0; background: none; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cover-letter { margin-top: 34px; border: 1px solid #667269; background: #1b2720; box-shadow: 10px 10px 0 rgba(215,255,82,.08); }
+.cover-letter-intro { padding: 22px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 16px; }
+.cover-letter-intro > span { width: 42px; height: 42px; display: grid; place-items: center; color: var(--ink); background: var(--acid); }
+.cover-letter-intro small { color: var(--acid); font: 500 9px "DM Mono"; letter-spacing: .07em; }
+.cover-letter-intro h3 { margin: 5px 0 4px; color: var(--paper); font-size: 20px; letter-spacing: -.025em; }
+.cover-letter-intro p { max-width: 610px; margin: 0; color: #aeb6b1; font-size: 11px; line-height: 1.55; }
+.cover-letter button { min-height: 40px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; color: var(--ink); border: 1px solid var(--acid); background: var(--acid); cursor: pointer; font-size: 11px; font-weight: 700; }
+.cover-letter button:disabled { cursor: wait; opacity: .6; }
+.cover-letter-error { padding: 11px 16px; display: flex; align-items: center; gap: 8px; color: #ffd6cf; border-top: 1px solid #7d3d36; background: #351d1a; font-size: 11px; }
+.cover-letter-error button { min-height: 29px; margin-left: auto; padding-inline: 10px; color: #ffd6cf; border-color: #a75e54; background: transparent; }
+.cover-letter-document { padding: 0 22px 22px; border-top: 1px solid #465149; }
+.cover-letter-meta { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 15px; color: #919c95; font: 500 9px "DM Mono"; }
+.cover-letter-document article { width: min(100%, 680px); margin: 0 auto; padding: 46px 54px; color: #18231d; background: #fffefa; box-shadow: 0 12px 32px rgba(0,0,0,.25); font: 400 12px/1.65 Georgia, serif; }
+.cover-letter-document article h4 { margin: 0; font: 700 23px/1.2 Georgia, serif; }
+.cover-letter-document article p { margin: 18px 0 0; }
+.cover-letter-document article .letter-target { margin-top: 4px; color: #5c6861; font-size: 10px; }
+.cover-letter-actions { width: min(100%, 680px); margin: 13px auto 0; display: flex; justify-content: flex-end; gap: 8px; }
+.cover-letter-actions button:first-child { color: var(--paper); border-color: #667269; background: transparent; }
 
 .how { padding: 120px clamp(24px, 8vw, 120px); display: grid; grid-template-columns: .8fr 1.2fr; gap: 9vw; border-bottom: 1px solid var(--line); }
 .section-num { font: 400 10px "DM Mono"; }
@@ -382,6 +404,9 @@ footer > span { font: 400 9px "DM Mono"; text-transform: uppercase; }
 
 @media (max-width: 760px) {
   .nav { height: 68px; }
+  .nav-actions { gap: 8px; }
+  .restart-flow { width: 38px; height: 38px; padding: 0; justify-content: center; font-size: 0; }
+  .restart-flow svg { width: 16px; height: 16px; }
   .hero { padding-top: 62px; }
   h1 { font-size: clamp(48px, 15vw, 72px); }
   .ats-explainer { grid-template-columns: 1fr; gap: 7px; }
@@ -406,6 +431,11 @@ footer > span { font: 400 9px "DM Mono"; text-transform: uppercase; }
   .code-pane { border-right: 0; }
   .paper-wrap { padding: 16px; }
   .latex-paper { min-height: 660px; padding: 36px 30px; }
+  .cover-letter-intro { grid-template-columns: 42px 1fr; }
+  .cover-letter-intro > button { grid-column: 1 / -1; width: 100%; }
+  .cover-letter-document { padding-inline: 14px; }
+  .cover-letter-document article { padding: 34px 27px; }
+  .cover-letter-actions { flex-direction: column; }
   .how { grid-template-columns: 1fr; padding: 85px 24px; }
   .steps article { grid-template-columns: 35px 1fr; }
   .steps p { grid-column: 2; }

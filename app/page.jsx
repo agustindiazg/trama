@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown, ArrowRight, Check, Download,
-  FileText, LockKeyhole, Sparkles, Target, Upload, X
+  FileText, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
 import { getCvSectionTitles } from "./lib/cv-language";
@@ -159,6 +159,7 @@ async function extractPdfText(file) {
 
 function App() {
   const inputRef = useRef(null);
+  const flowIdRef = useRef(0);
   const [phase, setPhase] = useState("upload");
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState(null);
@@ -191,6 +192,9 @@ function App() {
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [iterationComplete, setIterationComplete] = useState(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [coverLetter, setCoverLetter] = useState(null);
+  const [coverLetterStatus, setCoverLetterStatus] = useState("idle");
+  const [coverLetterError, setCoverLetterError] = useState("");
 
   useEffect(() => {
     try {
@@ -233,6 +237,44 @@ function App() {
     }));
   }, [targetRole, jobDescription, jobUrl, additionalInformation, settingsHydrated]);
 
+  const resetFlow = useCallback(() => {
+    flowIdRef.current += 1;
+    setPhase("upload");
+    setDragging(false);
+    setFile(null);
+    setStatus("idle");
+    setError("");
+    setPages(0);
+    setLatex("");
+    setOriginalLatex("");
+    setPdfStatus("idle");
+    setPdfError("");
+    setTargetRole("");
+    setJobInputMode("url");
+    setJobDescription("");
+    setJobUrl("");
+    setAdditionalInformation("");
+    setJobKeywords([]);
+    setEvaluation(null);
+    setOriginalCv(null);
+    setWorkingCv(null);
+    setQueuedContext(null);
+    setJobAnalysis({ requested: false, sourceRead: false, sourceType: null });
+    setFeedback(null);
+    setFeedbackNote("");
+    setWorkflowStep(3);
+    setImprovementAnalysis({ changes: [], questions: [] });
+    setQuestionAnswers({});
+    setQuestionQuickAnswers({});
+    setActiveQuestionIndex(0);
+    setIterationComplete(false);
+    setCoverLetter(null);
+    setCoverLetterStatus("idle");
+    setCoverLetterError("");
+    if (inputRef.current) inputRef.current.value = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   const processFile = useCallback(async (candidate) => {
     if (!candidate) return;
     if (candidate.type !== "application/pdf" && !candidate.name.toLowerCase().endsWith(".pdf")) {
@@ -257,10 +299,14 @@ function App() {
     setQuestionQuickAnswers({});
     setActiveQuestionIndex(0);
     setIterationComplete(false);
+    setCoverLetter(null);
+    setCoverLetterStatus("idle");
+    setCoverLetterError("");
     setJobKeywords([]);
     setEvaluation(null);
     setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
     setStatus("reading");
+    const flowId = flowIdRef.current;
     try {
       const localPromise = extractPdfText(candidate).catch(() => ({ text: "", pages: 0 }));
       const formData = new FormData();
@@ -268,6 +314,7 @@ function App() {
       formData.append("intent", "extract");
       const aiPromise = fetch("/api/interpret-cv", { method: "POST", body: formData });
       const [result, aiResponse] = await Promise.all([localPromise, aiPromise]);
+      if (flowId !== flowIdRef.current) return;
       setPages(result.pages);
       let generatedLatex = "";
 
@@ -299,6 +346,7 @@ function App() {
       }
       setStatus("context-ready");
     } catch (err) {
+      if (flowId !== flowIdRef.current) return;
       setStatus("error");
       setPhase(err.code === "INVALID_CV_CONTENT" ? "upload" : "context");
       if (err.code === "INVALID_CV_CONTENT") {
@@ -311,6 +359,7 @@ function App() {
   }, [jobDescription, jobUrl]);
 
   const runImprovement = useCallback(async (cv, context) => {
+    const flowId = flowIdRef.current;
     setStatus("improving");
     setError("");
     try {
@@ -326,6 +375,7 @@ function App() {
         })
       });
       const data = await response.json();
+      if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos mejorar el CV.");
       const improvedCv = data.cv;
       setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
@@ -348,6 +398,7 @@ function App() {
         return updated;
       });
     } catch (err) {
+      if (flowId !== flowIdRef.current) return;
       setStatus("context-ready");
       setPhase("context");
       setQueuedContext(null);
@@ -389,6 +440,7 @@ function App() {
     if (!workingCv || !revisionRequest) return;
     setStatus("revising");
     setError("");
+    const flowId = flowIdRef.current;
     try {
       const response = await fetch("/api/improve-cv", {
         method: "POST",
@@ -396,6 +448,7 @@ function App() {
         body: JSON.stringify({ cv: workingCv, revisionFeedback: revisionRequest })
       });
       const data = await response.json();
+      if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos aplicar el feedback.");
       const generatedLatex = makeLatexFromCv(data.cv);
       setWorkingCv(data.cv);
@@ -410,6 +463,7 @@ function App() {
       setIterationComplete(true);
       setStatus("ready");
     } catch (err) {
+      if (flowId !== flowIdRef.current) return;
       setStatus("ready");
       setError(err.message || "No pudimos aplicar el feedback.");
     }
@@ -578,11 +632,63 @@ function App() {
     }
   };
 
+  const generateCoverLetter = async () => {
+    if (!workingCv || !jobUrl.trim()) return;
+    setCoverLetterStatus("generating");
+    setCoverLetterError("");
+    const flowId = flowIdRef.current;
+    try {
+      const response = await fetch("/api/generate-cover-letter", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cv: workingCv, jobUrl: jobUrl.trim() })
+      });
+      const data = await response.json();
+      if (flowId !== flowIdRef.current) return;
+      if (!response.ok) throw new Error(data.error || "No pudimos generar la cover letter.");
+      setCoverLetter(data.letter);
+      setCoverLetterStatus("ready");
+    } catch (err) {
+      if (flowId !== flowIdRef.current) return;
+      setCoverLetterStatus("error");
+      setCoverLetterError(err.message || "No pudimos generar la cover letter.");
+    }
+  };
+
+  const downloadCoverLetter = async () => {
+    if (!coverLetter) return;
+    const { jsPDF } = await import("jspdf");
+    const document = new jsPDF({ unit: "mm", format: "a4", compress: true });
+    const margin = 24;
+    const width = document.internal.pageSize.getWidth() - margin * 2;
+    let y = 25;
+    const write = (text, { size = 11, style = "normal", gap = 7 } = {}) => {
+      document.setFont("helvetica", style);
+      document.setFontSize(size);
+      document.setTextColor(29, 39, 34);
+      const lines = document.splitTextToSize(text, width);
+      document.text(lines, margin, y);
+      y += lines.length * 5.3 + gap;
+    };
+    write(coverLetter.senderName, { size: 19, style: "bold", gap: 4 });
+    write(`${coverLetter.role} · ${coverLetter.company}`, { size: 9, gap: 14 });
+    write(coverLetter.greeting, { gap: 7 });
+    coverLetter.paragraphs.forEach((paragraph) => write(paragraph, { gap: 7 }));
+    write(coverLetter.closing, { gap: 3 });
+    write(coverLetter.senderName, { style: "bold" });
+    document.setProperties({ title: `${coverLetter.senderName} - Cover letter - ${coverLetter.company}`, creator: "Trama" });
+    const safeCompany = coverLetter.company.replace(/[^a-z0-9áéíóúñü]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+    document.save(`cover-letter-${safeCompany || "empresa"}.pdf`);
+  };
+
   return (
     <main>
       <nav className="nav">
         <a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a>
-        <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a>
+        <div className="nav-actions">
+          {phase !== "upload" ? <button type="button" className="restart-flow" onClick={resetFlow}><RotateCcw size={14} /> Empezar de nuevo</button> : null}
+          <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a>
+        </div>
       </nav>
 
       <section className="hero">
@@ -639,7 +745,7 @@ function App() {
             </fieldset>
             <div className="improvement-guarantee"><Check size={15} /><span><strong>La primera mejora está incluida</strong><small>Reescribimos y priorizamos sin inventar experiencia ni métricas.</small></span></div>
             <div className="context-actions">
-              <button type="button" className="back-button" onClick={() => { setPhase("upload"); setStatus("idle"); setFile(null); setOriginalCv(null); setWorkingCv(null); }}>Cambiar PDF</button>
+              <button type="button" className="back-button" onClick={resetFlow}>Cambiar PDF</button>
               <button type="submit" className="continue-button" disabled={status === "error"}>Continuar<ArrowRight size={16} /></button>
             </div>
           </form>
@@ -781,7 +887,20 @@ function App() {
               </div>
             </div>
           </div>
-          {workflowStep === 5 ? <button className="new-file" onClick={() => { setPhase("upload"); setStatus("idle"); setFile(null); setLatex(""); setOriginalCv(null); setWorkingCv(null); setEvaluation(null); setFeedback(null); setWorkflowStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); }}><ArrowRight size={16} /> Mejorar otro CV</button> : null}
+          {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
+            <div className="cover-letter-intro">
+              <span><Mail size={18} /></span>
+              <div><small>ÚLTIMO PASO · OPCIONAL</small><h3 id="cover-letter-title">¿También necesitás una cover letter?</h3><p>Usamos la empresa, el puesto y los requisitos de la oferta que compartiste para preparar una carta coherente con este CV.</p></div>
+              {!coverLetter ? <button type="button" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={15} /> {coverLetterStatus === "generating" ? "Leyendo la oferta…" : "Generar cover letter"}</button> : null}
+            </div>
+            {coverLetterError ? <div className="cover-letter-error"><X size={14} />{coverLetterError}<button type="button" onClick={generateCoverLetter}>Reintentar</button></div> : null}
+            {coverLetter ? <div className="cover-letter-document">
+              <div className="cover-letter-meta"><span>PARA {coverLetter.company}</span><span>{coverLetter.role}</span></div>
+              <article><h4>{coverLetter.senderName}</h4><p className="letter-target">{coverLetter.role} · {coverLetter.company}</p><p>{coverLetter.greeting}</p>{coverLetter.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}<p>{coverLetter.closing}<br /><strong>{coverLetter.senderName}</strong></p></article>
+              <div className="cover-letter-actions"><button type="button" onClick={generateCoverLetter} disabled={coverLetterStatus === "generating"}><Sparkles size={14} /> Regenerar</button><button type="button" className="download-letter" onClick={downloadCoverLetter}><Download size={14} /> Descargar PDF</button></div>
+            </div> : null}
+          </section> : null}
+          {workflowStep === 5 ? <button className="new-file" onClick={resetFlow}><RotateCcw size={16} /> Empezar de nuevo</button> : null}
         </section>
       )}
 
