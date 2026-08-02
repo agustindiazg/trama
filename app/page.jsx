@@ -224,6 +224,7 @@ function App() {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [savedResume, setSavedResume] = useState(null);
   const [savedResumeHydrated, setSavedResumeHydrated] = useState(false);
+  const [improvementSkipped, setImprovementSkipped] = useState(false);
 
   useEffect(() => {
     setSavedResume(loadSavedResume(window.localStorage));
@@ -271,7 +272,7 @@ function App() {
     }));
   }, [targetRole, jobDescription, jobUrl, additionalInformation, settingsHydrated]);
 
-  const useSavedResume = useCallback(() => {
+  const openSavedResume = useCallback((destination = "context") => {
     if (!savedResume) return;
     const savedFile = {
       name: savedResume.sourceFileName,
@@ -289,11 +290,18 @@ function App() {
       setJobKeywords(Array.isArray(savedResume.content.jobKeywords) ? savedResume.content.jobKeywords : []);
       setEvaluation(null);
       setError("");
-      setStatus("context-ready");
-      setPhase("context");
+      setImprovementAnalysis({ changes: [], questions: [] });
+      setImprovementSkipped(destination === "final");
+      setWorkflowStep(destination === "final" ? 5 : 3);
+      setStatus(destination === "final" ? "ready" : "context-ready");
+      setPhase(destination === "final" ? "result" : "context");
+      setPreviewOpen(true);
       setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
     }, "expand");
   }, [jobDescription, jobUrl, savedResume]);
+
+  const useSavedResume = useCallback(() => openSavedResume("context"), [openSavedResume]);
+  const previewSavedResume = useCallback(() => openSavedResume("final"), [openSavedResume]);
 
   const resetFlow = useCallback(() => {
     flowIdRef.current += 1;
@@ -331,6 +339,7 @@ function App() {
       setCoverLetterStatus("idle");
       setCoverLetterError("");
       setPreviewOpen(true);
+      setImprovementSkipped(false);
       if (inputRef.current) inputRef.current.value = "";
       window.scrollTo(0, 0);
     }, "collapse");
@@ -361,6 +370,7 @@ function App() {
       setQuestionQuickAnswers({});
       setActiveQuestionIndex(0);
       setIterationComplete(false);
+      setImprovementSkipped(false);
       setCoverLetter(null);
       setCoverLetterStatus("idle");
       setCoverLetterError("");
@@ -487,10 +497,40 @@ function App() {
     }
   }, [file]);
 
+  const finishWithoutImprovement = useCallback((cv) => {
+    const unchangedLatex = makeLatexFromCv(cv);
+    let persistedResume = null;
+    try {
+      persistedResume = saveResume(window.localStorage, { file, pages, content: cv });
+    } catch {
+      // El CV sigue disponible en esta sesión aunque localStorage esté bloqueado.
+    }
+    withViewTransition(() => {
+      if (persistedResume) setSavedResume(persistedResume);
+      setWorkingCv(cv);
+      setOriginalLatex(unchangedLatex);
+      setLatex(unchangedLatex);
+      setImprovementAnalysis({ changes: [], questions: [] });
+      setJobKeywords(Array.isArray(cv.jobKeywords) ? cv.jobKeywords : []);
+      setJobAnalysis({ requested: false, sourceRead: false, sourceType: null });
+      setQueuedContext(null);
+      setImprovementSkipped(true);
+      setIterationComplete(true);
+      setWorkflowStep(5);
+      setStatus("ready");
+      setPhase("result");
+      setPreviewOpen(true);
+    }, "step");
+  }, [file, pages]);
+
   useEffect(() => {
     if (!originalCv || !queuedContext || status !== "context-ready") return;
+    if (queuedContext.skipImprovement) {
+      finishWithoutImprovement(originalCv);
+      return;
+    }
     runImprovement(originalCv, queuedContext);
-  }, [originalCv, queuedContext, runImprovement, status]);
+  }, [finishWithoutImprovement, originalCv, queuedContext, runImprovement, status]);
 
   const continueWithContext = (event, skipObjective = false) => {
     event.preventDefault();
@@ -500,6 +540,7 @@ function App() {
     const context = skipObjective ? {
       mode: "general",
       hasObjective: false,
+      skipImprovement: true,
       jobUrl: "",
       targetRole: "",
       additionalInformation: "",
@@ -790,11 +831,15 @@ function App() {
 
   const inFlow = phase !== "upload";
   const togglePreview = () => withViewTransition(() => setPreviewOpen((open) => !open), "drawer");
+  const returnHome = (event) => {
+    event.preventDefault();
+    resetFlow();
+  };
 
   return (
     <main className={`${inFlow ? "app-mode" : ""}${status === "ready" && previewOpen ? " preview-open" : ""}`}>
       <nav className="nav">
-        <a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a>
+        <a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a>
         <div className="nav-actions">
           {inFlow ? <button type="button" className="restart-flow" onClick={resetFlow}><RotateCcw size={14} /> Empezar de nuevo</button> : null}
           {!inFlow ? <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a> : null}
@@ -823,6 +868,7 @@ function App() {
             </div>
             <div className="saved-resume-actions">
               <button type="button" className="continue-saved" onClick={useSavedResume}>Usar este CV <ArrowRight size={16} /></button>
+              <button type="button" className="preview-saved" onClick={previewSavedResume}><FileText size={15} /> Ver y descargar</button>
               <button type="button" className="replace-saved" onClick={() => inputRef.current?.click()}><Upload size={15} /> Reemplazar PDF</button>
             </div>
             <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
@@ -882,22 +928,22 @@ function App() {
         ) : phase === "waiting" ? (
           <section className="context-step waiting-step" aria-live="polite">
             <div className="flow-progress" aria-label="Progreso"><span className={originalCv ? "done" : "active"}>{originalCv ? <Check size={13} /> : null} CV</span><i /><span className="done"><Check size={13} /> {queuedContext?.hasObjective ? "Objetivo" : "Sin objetivo"}</span><i /><span className={originalCv ? "active" : ""}>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span></div>
-            <div className="waiting-orbit"><Sparkles size={24} /></div>
-            <span className="kicker">PASO 03 · PREPARANDO EL RECORRIDO</span>
-            <h2>{originalCv ? queuedContext?.hasObjective ? "Estamos cruzando tu experiencia con el objetivo." : "Estamos mejorando tu CV de forma general." : "Seguimos analizando tu CV."}</h2>
-            <p>{originalCv ? queuedContext?.hasObjective ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Nos enfocamos en claridad, evidencia y compatibilidad ATS sin orientarlo a una oportunidad específica." : queuedContext?.hasObjective ? "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente." : "En cuanto termine la lectura del PDF, aplicaremos una mejora general automáticamente."}</p>
+            <div className="waiting-orbit">{queuedContext?.skipImprovement ? <FileText size={24} /> : <Sparkles size={24} />}</div>
+            <span className="kicker">{queuedContext?.skipImprovement ? "PASO 05 · PREPARANDO TU CV" : "PASO 03 · PREPARANDO EL RECORRIDO"}</span>
+            <h2>{queuedContext?.skipImprovement ? originalCv ? "Tu CV está listo para revisar." : "Seguimos analizando tu CV." : originalCv ? "Estamos cruzando tu experiencia con el objetivo." : "Seguimos analizando tu CV."}</h2>
+            <p>{queuedContext?.skipImprovement ? originalCv ? "Conservamos el contenido sin cambios y abrimos la versión final." : "En cuanto termine la lectura del PDF, podrás revisarlo y descargarlo sin aplicar mejoras." : originalCv ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente."}</p>
             <div className="waiting-lines"><i /></div>
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
             <div className="flow-progress" aria-label="Progreso">
-              <span className="done"><Check size={13} /> CV</span><i /><span className="done"><Check size={13} /> Objetivo</span><i /><span className={workflowStep > 3 ? "done" : "active"}>{workflowStep > 3 ? <Check size={13} /> : null} 03 CV mejorado</span><i /><span className={workflowStep === 4 ? "active" : workflowStep > 4 ? "done" : ""}>04 Seguir mejorando</span><i /><span className={workflowStep === 5 ? "active" : ""}>05 Final</span>
+              <span className="done"><Check size={13} /> CV</span><i /><span className="done"><Check size={13} /> {improvementSkipped ? "Sin objetivo" : "Objetivo"}</span><i /><span className={workflowStep > 3 ? "done" : "active"}>{workflowStep > 3 ? <Check size={13} /> : null} 03 {improvementSkipped ? "Omitido" : "CV mejorado"}</span><i /><span className={workflowStep === 4 ? "active" : workflowStep > 4 ? "done" : ""}>04 {improvementSkipped ? "Omitido" : "Seguir mejorando"}</span><i /><span className={workflowStep === 5 ? "active" : ""}>05 Final</span>
             </div>
             <div className={`improvement-content ${status === "revising" ? "is-loading" : ""}`}>
               {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <span className="kicker">{workflowStep === 3 ? "PASO 03 · CV MEJORADO" : workflowStep === 4 ? iterationComplete ? perfectMatch ? "PASO 04 · OBJETIVO ALCANZADO" : "PASO 04 · NUEVA ITERACIÓN" : "PASO 04 · SEGUIR MEJORANDO" : "PASO 05 · CONFIRMACIÓN FINAL"}</span>
-              <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : "Tu CV ya está listo."}</h2>
-              <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : "Descargá el PDF listo para usar. Si querés comprobarlo antes o todavía necesitás cambiar algo, podés revisar el preview o volver al paso anterior."}</p>
+              <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
+              <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : improvementSkipped ? "Saltaste el objetivo, así que no aplicamos ninguna mejora. Podés revisar el preview y descargar nuevamente el PDF." : "Descargá el PDF listo para usar. Si querés comprobarlo antes o todavía necesitás cambiar algo, podés revisar el preview o volver al paso anterior."}</p>
               {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
                 <div className="cover-letter-intro">
                   <span><Mail size={18} /></span>
@@ -931,7 +977,7 @@ function App() {
               </div> : null}
               {workflowStep === 5 && pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
               <div className="step-feedback">
-                <button className="step-back" onClick={() => workflowStep === 3 ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
+                <button className="step-back" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
                 {workflowStep === 3 ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> Esta versión está lista</button><button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button></> : null}
                 {workflowStep === 4 && iterationComplete ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> {perfectMatch ? "Confirmar versión ideal" : "Este CV está listo"}</button>{!perfectMatch ? <button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir iterando</button> : null}</> : null}
                 <a className={`preview-link mobile-only ${workflowStep === 5 ? "secondary-preview" : ""}`} href="#preview-document"><FileText size={15} /> Revisar preview</a>
@@ -947,7 +993,7 @@ function App() {
 
       {status === "ready" && (
         <section className="result" id="resultado">
-          <div className="result-stepper"><a href="#flujo-mejoras">Volver al flujo</a><span>CV <Check size={12} /></span><i /><span>Objetivo <Check size={12} /></span><i /><span className={workflowStep === 3 ? "active" : ""}>CV mejorado</span><i /><span className={workflowStep === 4 ? "active" : ""}>Seguir mejorando</span><i /><span className={workflowStep === 5 ? "active" : ""}>Final</span></div>
+          <div className="result-stepper"><a href="#flujo-mejoras">Volver al flujo</a><span>CV <Check size={12} /></span><i /><span>{improvementSkipped ? "Sin objetivo" : "Objetivo"} <Check size={12} /></span><i /><span className={workflowStep === 3 ? "active" : ""}>{improvementSkipped ? "Sin mejoras" : "CV mejorado"}</span><i /><span className={workflowStep === 4 ? "active" : ""}>{improvementSkipped ? "Omitido" : "Seguir mejorando"}</span><i /><span className={workflowStep === 5 ? "active" : ""}>Final</span></div>
           {false ? <>
           <div className="result-head">
             <div><span className="kicker">TU CV MEJORADO ESTÁ LISTO</span><h2>Tu experiencia ahora se entiende mejor.</h2><p>{file.name} · {pages || "—"} {pages === 1 ? "página" : "páginas"} · {allowImprovement && targetRole.trim() ? `preparado para ${targetRole.trim()}` : "preparado para sistemas de selección"}</p></div>
@@ -1041,7 +1087,7 @@ function App() {
         </div>
       </section> : null}
 
-      {!inFlow ? <footer><a className="brand" href="#"><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer> : null}
+      {!inFlow ? <footer><a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer> : null}
     </main>
   );
 }

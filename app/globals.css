@@ -93,6 +93,7 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .saved-resume-actions { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 9px; }
 .saved-resume-actions button { min-height: 44px; padding: 0 17px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 1px solid var(--ink); font-size: 12px; font-weight: 600; }
 .saved-resume-actions .continue-saved { color: var(--paper); background: var(--ink); }
+.saved-resume-actions .preview-saved { color: var(--ink); background: var(--acid); border-color: var(--acid); }
 .saved-resume-actions .replace-saved { color: var(--ink); background: transparent; }
 .saved-resume-actions button:hover { color: var(--ink); background: var(--acid); }
 .saved-resume-note { display: block; margin-top: 14px; color: #69736c; font: 400 9px/1.5 "DM Mono"; }
