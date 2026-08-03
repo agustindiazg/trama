@@ -857,9 +857,15 @@ function App() {
 
       <section className="hero">
         {!inFlow ? <>
-          <div className="eyebrow"><Sparkles size={14} /> OPTIMIZACIÓN DE CV PARA ATS</div>
-          <h1>Tu experiencia merece<br />llegar a la <em>entrevista.</em></h1>
-          <p className="hero-copy">Analizamos tu CV, mejoramos su redacción y lo preparamos para que los sistemas de selección y los reclutadores entiendan mejor el valor de tu experiencia.</p>
+          <div className="eyebrow"><Sparkles size={14} /> TU CV, PREPARADO PARA ESA OPORTUNIDAD</div>
+          <h1>Un CV que conecta<br />tu experiencia con <em>el puesto.</em></h1>
+          <p className="hero-copy">Subí tu CV y compartí la oferta. Trama identifica qué busca la empresa, mejora cómo contás tu experiencia y te muestra qué falta reforzar — sin inventar nada.</p>
+
+          <div className="hero-outcomes" aria-label="Qué obtenés con Trama">
+            <span><Check size={14} /> CV adaptado a la oferta</span>
+            <span><Check size={14} /> Puntaje ATS y coincidencia</span>
+            <span><Check size={14} /> PDF listo para postularte</span>
+          </div>
 
           <aside className="ats-explainer">
             <span>¿Qué es un ATS?</span>
@@ -892,11 +898,11 @@ function App() {
             onClick={() => inputRef.current?.click()}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
           >
             <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
             <div className="file-icon"><FileText size={31} strokeWidth={1.6} /><span>PDF</span></div>
-            <h2>Empezá por tu CV actual</h2><p>Subilo en PDF y te mostramos cómo mejorarlo</p><button><Upload size={17} /> Mejorar mi CV</button><small>Máximo 10 MB · Lo procesamos solo para generar tu mejora</small>
+            <h2>Empezá por tu CV actual</h2><p>Después podés sumar la oferta o contarnos qué puesto buscás</p><button type="button"><Upload size={17} /> Analizar mi CV</button><small>PDF de hasta 10 MB · Vas a revisar cada mejora antes de descargar</small>
           </div>
         ) : null) : phase === "overview" ? (
           <section className="context-step resume-overview" aria-labelledby="resume-overview-title">
@@ -1018,7 +1024,7 @@ function App() {
           </section>
         ) : null}
         {error && <div className="error"><X size={17} />{error}</div>}
-        {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> Tus datos están protegidos</span><span><Check size={15} /> No inventamos experiencia</span><span><FileText size={15} /> Preparado para filtros ATS</span></div> : null}
+        {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> La versión queda en este dispositivo</span><span><Check size={15} /> No inventamos experiencia</span><span><FileText size={15} /> Formato legible para ATS</span></div> : null}
       </section>
 
       {status === "ready" && (
@@ -1108,12 +1114,21 @@ function App() {
       )}
 
       {!inFlow ? <section className="how" id="como-funciona">
-        <div><span className="section-num">01—04</span><h2>De tu CV actual<br />a una versión más competitiva.</h2></div>
+        <div><span className="section-num">01—04</span><h2>No cambia tu historia.<br />Cambia cómo se entiende.</h2><p className="how-intro">Trama trabaja con evidencia de tu experiencia y te deja el control de cada decisión.</p></div>
         <div className="steps">
-          <article><b>01</b><h3>Analizamos</h3><p>Detectamos qué información pueden leer los sistemas de selección y qué partes pierden fuerza.</p></article>
-          <article><b>02</b><h3>Mejoramos</h3><p>Reordenamos el contenido y reforzamos la redacción sin inventar experiencia.</p></article>
-          <article><b>03</b><h3>Adaptamos</h3><p>Si compartís una oferta, priorizamos los requisitos que tu trayectoria realmente respalda.</p></article>
-          <article><b>04</b><h3>Revisás</h3><p>Ves el resultado y descargás tu nuevo CV listo para postularte.</p></article>
+          <article><b>01</b><h3>Leemos tu CV</h3><p>Reconstruimos su contenido y auditamos si los sistemas ATS pueden interpretarlo correctamente.</p></article>
+          <article><b>02</b><h3>Entendemos el puesto</h3><p>Leemos la oferta o tu objetivo y detectamos requisitos, lenguaje y prioridades.</p></article>
+          <article><b>03</b><h3>Mejoramos con evidencia</h3><p>Reescribimos y priorizamos lo que tu trayectoria respalda. Si falta contexto, te preguntamos.</p></article>
+          <article><b>04</b><h3>Vos decidís</h3><p>Comparás cambios, iterás y descargás tu CV en PDF. También podés crear una carta de presentación.</p></article>
+        </div>
+      </section> : null}
+
+      {!inFlow ? <section className="deliverables" aria-labelledby="deliverables-title">
+        <div className="deliverables-heading"><span className="section-num">EL RESULTADO</span><h2 id="deliverables-title">Sabés qué cambió.<br />Y por qué.</h2></div>
+        <div className="deliverables-grid">
+          <article><span>01</span><Target size={22} /><h3>Coincidencia con la oferta</h3><p>Ves qué requisitos ya respaldás y cuáles necesitan más evidencia.</p></article>
+          <article><span>02</span><Sparkles size={22} /><h3>Mejoras explicadas</h3><p>Entendés cada ajuste de redacción antes de dar por lista la versión.</p></article>
+          <article><span>03</span><FileText size={22} /><h3>Documentos listos</h3><p>Descargás un PDF legible para ATS y, si compartiste una oferta, una carta de presentación coherente.</p></article>
         </div>
       </section> : null}
 

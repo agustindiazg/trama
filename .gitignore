@@ -21,5 +21,8 @@ coverage/
 .vscode/
 *.swp
 
+# Tool-specific skill aliases (canonical skills live in .agents/skills)
+.claude/
+
 # Hosting providers
 .vercel/

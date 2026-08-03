@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.DS_Store
+.env
+
+# Rendered outputs are reproducible and can be large. Imported source media
+# should live in public/ and remains versioned.
+out
+*.mp4
+*.mov
+*.webm

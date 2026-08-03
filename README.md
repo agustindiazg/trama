@@ -49,6 +49,19 @@ npm run build   # build de producción
 npm start       # ejecutar el build
 ```
 
+## Assets de marketing
+
+El proyecto Remotion vive en `marketing-video/`. El repositorio guarda las composiciones y su lockfile, pero no dependencias, bundles ni videos renderizados.
+
+```bash
+npm run marketing:install  # instalar dependencias del proyecto de video
+npm run marketing:dev      # abrir Remotion Studio
+npm run marketing:check    # validar TypeScript y ESLint
+npm run marketing:build    # comprobar que la composición genera un bundle
+```
+
+Los renders deben escribirse dentro de `marketing-video/out/`. Esa carpeta está ignorada por Git porque los videos se pueden regenerar desde el código fuente.
+
 ## Despliegue
 
 El proyecto es una aplicación Next.js y necesita un runtime Node.js para la ruta `/api/interpret-cv`; no alcanza con servir archivos estáticos. En Vercel u otra plataforma compatible, configurá `ANTHROPIC_API_KEY` como secreto del entorno y usá los comandos estándar de Next.js.
