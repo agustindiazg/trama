@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
+import { calculateCost } from "@/lib/costCalculator";
+import { logCost } from "@/lib/costLogger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -147,6 +149,16 @@ Si hay oferta, puesto objetivo o requisitos en cv.jobKeywords, questions debe co
 
     const payload = await response.json();
     if (!response.ok) {
+      // Log error
+      await logCost({
+        action: "improve-cv",
+        model: model,
+        status: "error",
+        error: payload?.error?.message || "API error",
+        inputTokens: 0,
+        outputTokens: 0,
+        costUSD: 0
+      });
       return NextResponse.json({ error: payload?.error?.message || "No pudimos mejorar el CV." }, { status: response.status });
     }
     const parsed = parseClaudeJson(payload);
@@ -178,7 +190,25 @@ Si hay oferta, puesto objetivo o requisitos en cv.jobKeywords, questions debe co
           };
         }).filter((question) => question.question)
       : [];
-    return NextResponse.json({ cv, analysis, model: payload.model, usage: payload.usage, jobAnalysis: { requested: Boolean(jobUrl || suppliedDescription || targetRole), sourceRead: Boolean(jobDescription || targetRole), sourceType: linkedJobText ? "url" : suppliedDescription ? "text" : targetRole ? "role" : null } });
+
+    // LOG COST
+    const cost = calculateCost(payload.model, payload.usage.input_tokens, payload.usage.output_tokens);
+    await logCost({
+      action: "improve-cv",
+      model: payload.model,
+      status: "success",
+      inputTokens: payload.usage.input_tokens,
+      outputTokens: payload.usage.output_tokens,
+      costUSD: cost.total,
+      metadata: {
+        jobUrlProvided: Boolean(jobUrl),
+        jobDescriptionProvided: Boolean(suppliedDescription),
+        targetRoleProvided: Boolean(targetRole),
+        hasObjective: hasObjective
+      }
+    });
+
+    return NextResponse.json({ cv, analysis, model: payload.model, usage: payload.usage, _cost: cost.total, jobAnalysis: { requested: Boolean(jobUrl || suppliedDescription || targetRole), sourceRead: Boolean(jobDescription || targetRole), sourceType: linkedJobText ? "url" : suppliedDescription ? "text" : targetRole ? "role" : null } });
   } catch (error) {
     console.error("CV improvement failed:", error);
     return NextResponse.json({ error: "No pudimos generar la mejora del CV." }, { status: 500 });

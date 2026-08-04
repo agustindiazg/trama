@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
+import { calculateCost } from "@/lib/costCalculator";
+import { logCost } from "@/lib/costLogger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -97,7 +99,19 @@ export async function POST(request) {
       cache: "no-store"
     });
     const payload = await response.json();
-    if (!response.ok) return NextResponse.json({ error: payload?.error?.message || "No pudimos generar la carta." }, { status: response.status });
+    if (!response.ok) {
+      // Log error
+      await logCost({
+        action: "generate-cover-letter",
+        model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
+        status: "error",
+        error: payload?.error?.message || "API error",
+        inputTokens: 0,
+        outputTokens: 0,
+        costUSD: 0
+      });
+      return NextResponse.json({ error: payload?.error?.message || "No pudimos generar la carta." }, { status: response.status });
+    }
     const letter = parseJson(payload);
     letter.company = String(letter.company || job.company || "").trim().slice(0, 160);
     letter.role = String(letter.role || job.role || "").trim().slice(0, 160);
@@ -105,7 +119,23 @@ export async function POST(request) {
     if (!letter.company || !letter.role || letter.paragraphs.length < 2) {
       return NextResponse.json({ error: "No pudimos identificar con suficiente certeza la empresa y el puesto de esta oferta." }, { status: 422 });
     }
-    return NextResponse.json({ letter });
+
+    // LOG COST
+    const cost = calculateCost(payload.model, payload.usage.input_tokens, payload.usage.output_tokens);
+    await logCost({
+      action: "generate-cover-letter",
+      model: payload.model,
+      status: "success",
+      inputTokens: payload.usage.input_tokens,
+      outputTokens: payload.usage.output_tokens,
+      costUSD: cost.total,
+      metadata: {
+        company: letter.company,
+        role: letter.role
+      }
+    });
+
+    return NextResponse.json({ letter, _cost: cost.total });
   } catch (error) {
     console.error("Cover letter generation failed", error);
     return NextResponse.json({ error: "No pudimos generar la cover letter." }, { status: 500 });

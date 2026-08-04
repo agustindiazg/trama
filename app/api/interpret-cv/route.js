@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { validateCvContent } from "../../lib/cv-validation";
+import { calculateCost } from "@/lib/costCalculator";
+import { logCost } from "@/lib/costLogger";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -347,6 +349,16 @@ export async function POST(request) {
     }
 
     if (!anthropicResponse.ok) {
+      // Log error
+      await logCost({
+        action: "interpret-cv",
+        model: configuredModel,
+        status: "error",
+        error: payload?.error?.message || "API error",
+        inputTokens: 0,
+        outputTokens: 0,
+        costUSD: 0
+      });
       return NextResponse.json({ error: payload?.error?.message || "Anthropic rechazó la solicitud." }, { status: anthropicResponse.status });
     }
 
@@ -361,13 +373,31 @@ export async function POST(request) {
     }
     delete cv.documentValidation;
     const responseModel = payload.model || configuredModel;
+
+    // Log the main interpret-cv call
+    const mainCost = calculateCost(payload.model, payload.usage.input_tokens, payload.usage.output_tokens);
+    let totalCost = mainCost.total;
+
     if (intent === "extract") {
       cv.jobKeywords = [];
+      await logCost({
+        action: "interpret-cv",
+        model: payload.model,
+        status: "success",
+        inputTokens: payload.usage.input_tokens,
+        outputTokens: payload.usage.output_tokens,
+        costUSD: totalCost,
+        metadata: {
+          intent: "extract",
+          hasJobSource: false
+        }
+      });
       return NextResponse.json({
         cv,
         evaluation: null,
         model: payload.model,
         usage: payload.usage,
+        _cost: totalCost,
         jobSource: "",
         jobAnalysis: { requested: false, sourceRead: false, sourceType: null }
       });
@@ -385,11 +415,30 @@ export async function POST(request) {
     });
     const [keywords, evaluation] = await Promise.all([keywordPromise, evaluationPromise]);
     cv.jobKeywords = keywords;
+
+    // Log the full interpret-cv with evaluation
+    await logCost({
+      action: "interpret-cv",
+      model: payload.model,
+      status: "success",
+      inputTokens: payload.usage.input_tokens,
+      outputTokens: payload.usage.output_tokens,
+      costUSD: totalCost,
+      metadata: {
+        intent: "full",
+        hasJobSource: preferences.jobSource ? true : false,
+        hasEvaluation: evaluation ? true : false,
+        keywordCount: keywords.length,
+        agentsUsed: evaluation?.agentsUsed || []
+      }
+    });
+
     return NextResponse.json({
       cv,
       evaluation,
       model: payload.model,
       usage: payload.usage,
+      _cost: totalCost,
       jobSource: preferences.jobSource || "",
       jobAnalysis: {
         requested: Boolean(preferences.jobUrl || preferences.jobDescription),

@@ -160,6 +160,7 @@ function App() {
   const [originalCv, setOriginalCv] = useState(null);
   const [workingCv, setWorkingCv] = useState(null);
   const [queuedContext, setQueuedContext] = useState(null);
+  const [activeContext, setActiveContext] = useState(null);
   const [jobAnalysis, setJobAnalysis] = useState({ requested: false, sourceRead: false, sourceType: null });
   const [feedback, setFeedback] = useState(null);
   const [feedbackNote, setFeedbackNote] = useState("");
@@ -456,6 +457,7 @@ function App() {
         setWorkflowStep(3);
         setIterationComplete(false);
         setQueuedContext(null);
+        setActiveContext(context);
         setPreviewOpen(false);
       }, "step");
     } catch (err) {
@@ -560,7 +562,14 @@ function App() {
       const response = await localReviewFetch("/api/improve-cv", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cv: workingCv, revisionFeedback: revisionRequest })
+        body: JSON.stringify({
+          cv: workingCv,
+          revisionFeedback: revisionRequest,
+          targetRole: activeContext?.targetRole || "",
+          jobUrl: activeContext?.mode === "url" ? activeContext?.jobUrl : "",
+          jobDescription: "",
+          additionalInformation: activeContext?.mode === "manual" ? activeContext?.additionalInformation : ""
+        })
       });
       const data = await response.json();
       if (flowId !== flowIdRef.current) return;
