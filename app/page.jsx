@@ -7,6 +7,7 @@ import {
   FileText, Link2, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
+import { mergeChangeHistory } from "./lib/change-history";
 import { countResumeBullets, createResumeDocument, resumeDocumentToPreview, resumeDocumentToText } from "./lib/resume-document";
 import { deleteSavedResume, loadSavedResume, saveResume } from "./lib/resume-storage";
 const makeRawTextPreview = (rawText) => {
@@ -517,7 +518,11 @@ function App() {
         setWorkingCv(data.cv);
         setFallbackText("");
         setJobKeywords(Array.isArray(data.cv.jobKeywords) ? data.cv.jobKeywords : []);
-        setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
+        const nextAnalysis = data.analysis || { changes: [], questions: [] };
+        const previousChangeCount = improvementAnalysis.changes.length;
+        const mergedChanges = mergeChangeHistory(improvementAnalysis.changes, nextAnalysis.changes);
+        setImprovementAnalysis({ ...nextAnalysis, changes: mergedChanges });
+        setActiveChangeIndex(Math.min(previousChangeCount, Math.max(0, mergedChanges.length - 1)));
         setQuestionAnswers({});
         setQuestionQuickAnswers({});
         setFeedbackNote("");
@@ -919,8 +924,8 @@ function App() {
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
-            <div className="flow-progress compact-progress" aria-label={`Paso ${workflowStep} de 5`}><strong>Paso {workflowStep} de 5 · {workflowStep === 3 ? "Revisar versión" : workflowStep === 4 ? "Seguir mejorando" : "Descargar"}</strong></div>
-            <div className={`improvement-content ${status === "revising" ? "is-loading" : ""}`}>
+            {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <div className="flow-progress compact-progress" aria-label={`Paso ${workflowStep} de 5`}><strong>Paso {workflowStep} de 5 · {workflowStep === 3 ? "Revisar versión" : workflowStep === 4 ? "Seguir mejorando" : "Descargar"}</strong></div>}
+            <div className={`improvement-content ${status === "revising" ? "is-loading" : ""} ${workflowStep === 4 && !iterationComplete && activeQuestion ? "is-personalizing" : ""}`}>
               {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
               <p>{workflowStep === 3 ? "Revisá el resultado y elegí si está listo." : workflowStep === 4 ? iterationComplete ? "Revisá el resultado o hacé otra iteración." : "Respondé solo lo que puedas confirmar." : improvementSkipped ? "No aplicamos cambios al contenido." : "Descargá la versión lista para postularte."}</p>
@@ -949,20 +954,23 @@ function App() {
               {workflowStep === 4 && !iterationComplete && activeQuestion ? <div className="agent-questions question-stepper">
                 <div className="question-head"><div><strong>{activeQuestion.freeform ? "Información adicional" : "Preguntas para aumentar la coincidencia"}</strong><p>{activeQuestion.freeform ? "Este último campo siempre es opcional." : "Respondé sólo lo que puedas confirmar."}</p></div><div className="question-counter"><span>{activeQuestionIndex + 1} / {iterationSteps.length}</span>{!activeQuestion.freeform ? <button type="button" onClick={() => setActiveQuestionIndex(iterationSteps.length - 1)}>Saltar todas</button> : null}</div></div>
                 <div className="question-progress" aria-label={`Paso ${activeQuestionIndex + 1} de ${iterationSteps.length}`}>{iterationSteps.map((question, index) => { const key = question.id || index; const answered = question.freeform ? feedbackNote.trim() : questionQuickAnswers[key] || questionAnswers[key]?.trim(); return <i key={key} className={index === activeQuestionIndex ? "active" : answered ? "answered" : index < activeQuestionIndex ? "skipped" : ""} />; })}</div>
-                <div className="question-card"><span>{String(activeQuestionIndex + 1).padStart(2, "0")}</span><div><strong>{activeQuestion.question}</strong>{activeQuestion.why ? <small>{activeQuestion.why}</small> : null}{activeQuestion.freeform ? <textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} placeholder="Más datos, contexto o cambios que quieras pedir…" rows={4} autoFocus /> : <><div className="quick-answers" role="group" aria-label="Respuesta rápida">{activeQuickAnswers.map((answer) => { const questionKey = activeQuestion.id || activeQuestionIndex; const selected = questionQuickAnswers[questionKey] === answer; return <button key={answer} type="button" aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setQuestionQuickAnswers((current) => ({ ...current, [questionKey]: answer })); setActiveQuestionIndex((index) => Math.min(iterationSteps.length - 1, index + 1)); }}>{selected ? <Check size={14} /> : null}{answer}</button>; })}</div><details className="answer-details" open={Boolean(questionAnswers[activeQuestion.id || activeQuestionIndex])}><summary>Agregar contexto</summary><textarea value={questionAnswers[activeQuestion.id || activeQuestionIndex] || ""} onChange={(event) => setQuestionAnswers((current) => ({ ...current, [activeQuestion.id || activeQuestionIndex]: event.target.value }))} placeholder="Aclaración opcional…" rows={3} /></details></>}</div></div>
+                <div className="question-card"><span>{String(activeQuestionIndex + 1).padStart(2, "0")}</span><div><strong>{activeQuestion.question}</strong>{activeQuestion.why ? <small>{activeQuestion.why}</small> : null}{activeQuestion.freeform ? <textarea className="question-freeform" value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} placeholder="Más datos, contexto o cambios que quieras pedir…" rows={3} autoFocus /> : <><div className="quick-answers" role="group" aria-label="Respuesta rápida">{activeQuickAnswers.map((answer) => { const questionKey = activeQuestion.id || activeQuestionIndex; const selected = questionQuickAnswers[questionKey] === answer; return <button key={answer} type="button" aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setQuestionQuickAnswers((current) => ({ ...current, [questionKey]: answer })); setActiveQuestionIndex((index) => Math.min(iterationSteps.length - 1, index + 1)); }}>{selected ? <Check size={14} /> : null}{answer}</button>; })}</div><details className="answer-details" open={Boolean(questionAnswers[activeQuestion.id || activeQuestionIndex])}><summary>Respuesta personalizada</summary><textarea value={questionAnswers[activeQuestion.id || activeQuestionIndex] || ""} onChange={(event) => setQuestionAnswers((current) => ({ ...current, [activeQuestion.id || activeQuestionIndex]: event.target.value }))} placeholder="Escribí tu respuesta…" rows={3} /></details></>}</div></div>
                 <div className="question-actions">
-                  <button type="button" className="tertiary-action" disabled={activeQuestionIndex === 0} onClick={() => setActiveQuestionIndex((index) => Math.max(0, index - 1))}>Anterior</button>
-                  {activeQuestionIndex < iterationSteps.length - 1 ? <><button type="button" className="tertiary-action" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Omitir</button><button type="button" className="primary-action" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Siguiente <ArrowRight size={14} /></button></> : <button type="button" className="primary-action" onClick={() => (feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim())) ? applyRevisionFeedback() : setIterationComplete(true)}>{feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim()) ? "Generar nueva versión" : "Continuar sin cambios"}</button>}
+                  <button type="button" className="question-skip tertiary-action" onClick={() => activeQuestionIndex < iterationSteps.length - 1 ? setActiveQuestionIndex((index) => index + 1) : setIterationComplete(true)}>Omitir</button>
+                  <div className="question-navigation">
+                    <button type="button" className="tertiary-action" disabled={activeQuestionIndex === 0} onClick={() => setActiveQuestionIndex((index) => Math.max(0, index - 1))}>Anterior</button>
+                    {activeQuestionIndex < iterationSteps.length - 1 ? <button type="button" className="primary-action" disabled={!String(questionAnswers[activeQuestion.id || activeQuestionIndex] || "").trim()} onClick={() => setActiveQuestionIndex((index) => index + 1)}>Siguiente <ArrowRight size={14} /></button> : <button type="button" className="primary-action" onClick={() => (feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim())) ? applyRevisionFeedback() : setIterationComplete(true)}>{feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim()) ? "Generar nueva versión" : "Continuar sin cambios"}</button>}
+                  </div>
                 </div>
               </div> : null}
               {workflowStep === 5 && pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
-              <div className="step-feedback">
+              {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <div className="step-feedback">
                 <button type="button" className="step-back tertiary-action" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
                 {workflowStep === 5 ? <button type="button" className="start-new-flow tertiary-action" onClick={resetFlow}><RotateCcw size={15} /> Empezar de nuevo</button> : null}
                 {workflowStep === 3 ? <><button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button><button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}
                 {workflowStep === 4 && iterationComplete ? <>{!perfectMatch ? <button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir mejorando</button> : null}<button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}
                 {workflowStep === 5 ? <button type="button" className="final-download primary-action" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar CV en PDF"}</button> : null}
-              </div>
+              </div>}
             </div>
           </section>
         ) : null}
