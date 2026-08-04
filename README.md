@@ -31,6 +31,16 @@ npm run dev
 
 Completá `ANTHROPIC_API_KEY` en `.env` y abrí [http://localhost:3000](http://localhost:3000).
 
+### Revisión local sin Claude
+
+```bash
+npm run dev:review
+```
+
+En `next dev` aparece el botón **LOCAL REVIEW**. El panel permite editar un escenario JSON, simular latencia o errores y comenzar el flujo directamente con un CV estructurado. Al activarlo, las llamadas del navegador a interpretación, mejora, revisión y cover letter se resuelven desde el escenario guardado en `localStorage`; no requieren una API key ni llegan a Anthropic.
+
+El interceptor exige simultáneamente `NODE_ENV=development` y un hostname loopback (`localhost`, `127.0.0.1` o `::1`). El panel tampoco se renderiza en builds de producción. Además, `npm run build` falla si detecta el interceptor, los fixtures o textos del panel dentro de los artefactos ejecutables de Next.
+
 ## Variables de entorno
 
 | Variable | Requerida | Descripción |
@@ -44,6 +54,7 @@ Nunca expongas la clave con el prefijo `NEXT_PUBLIC_` ni subas tu archivo `.env`
 
 ```bash
 npm run dev     # servidor de desarrollo
+npm run dev:review # revisión local con escenarios configurables
 npm test        # pruebas unitarias
 npm run build   # build de producción
 npm start       # ejecutar el build

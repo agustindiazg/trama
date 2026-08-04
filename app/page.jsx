@@ -2,14 +2,17 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { jsPDF } from "jspdf";
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, ClipboardPaste, Download,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Download,
   FileText, Link2, LockKeyhole, Mail, Maximize2, Minus, Plus, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
 import { mergeChangeHistory } from "./lib/change-history";
 import { countResumeBullets, createResumeDocument, resumeDocumentToPreview, resumeDocumentToText } from "./lib/resume-document";
 import { deleteSavedResume, loadSavedResume, saveResume } from "./lib/resume-storage";
+import { localReviewFetch } from "./lib/local-review";
+import LocalReviewPanel from "./components/local-review-panel";
 const makeRawTextPreview = (rawText) => {
   const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
   const name = lines[0] || "Tu Nombre";
@@ -86,6 +89,27 @@ function TramaLogo({ inverse = false }) {
   );
 }
 
+const flowStepLabels = ["Subir CV", "Objetivo", "Revisar versión", "Mejorar", "Descargar"];
+
+function VisualFlowProgress({ currentStep, onStepClick }) {
+  return (
+    <nav className="visual-flow-progress" aria-label={`Progreso: paso ${currentStep} de ${flowStepLabels.length}`}>
+      <ol>
+        {flowStepLabels.map((label, index) => {
+          const step = index + 1;
+          const state = step < currentStep ? "done" : step === currentStep ? "active" : "pending";
+          const content = <><span aria-hidden="true" /><strong>{label}</strong></>;
+          return (
+            <li key={label} className={state} aria-current={state === "active" ? "step" : undefined}>
+              {state === "done" ? <button type="button" onClick={() => onStepClick?.(step)} aria-label={`Volver a ${label}`}>{content}</button> : <div>{content}</div>}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 function Brand({ inverse = false }) {
   return <><TramaLogo inverse={inverse} /><span className="brand-word">trama</span><span className="brand-descriptor">Mejoramos tu CV</span></>;
 }
@@ -129,7 +153,6 @@ function App() {
   const [jobInputMode, setJobInputMode] = useState("url");
   const [jobDescription, setJobDescription] = useState("");
   const [jobUrl, setJobUrl] = useState("");
-  const [pasteStatus, setPasteStatus] = useState("idle");
   const [additionalInformation, setAdditionalInformation] = useState("");
   const [jobKeywords, setJobKeywords] = useState([]);
   const [evaluation, setEvaluation] = useState(null);
@@ -221,6 +244,8 @@ function App() {
 
   const openSavedResume = useCallback((destination = "context") => {
     if (!savedResume) return;
+    const isOverview = destination === "overview";
+    const isPersonalization = destination === "personalize";
     const savedFile = {
       name: savedResume.sourceFileName,
       size: savedResume.sourceFileSize,
@@ -237,15 +262,16 @@ function App() {
       setError("");
       setImprovementAnalysis({ changes: [], questions: [] });
       setImprovementSkipped(false);
+      setResumeGoal(isPersonalization ? "personalize" : null);
       setWorkflowStep(3);
-      setStatus(destination === "overview" ? "ready" : "context-ready");
-      setPhase(destination === "overview" ? "overview" : "context");
-      setPreviewOpen(destination === "overview");
+      setStatus(isOverview ? "ready" : "context-ready");
+      setPhase(isOverview ? "overview" : "context");
+      setPreviewOpen(isOverview);
       setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
     }, "expand");
   }, [jobDescription, jobUrl, savedResume]);
 
-  const useSavedResume = useCallback(() => openSavedResume("context"), [openSavedResume]);
+  const useSavedResume = useCallback(() => openSavedResume("personalize"), [openSavedResume]);
   const previewSavedResume = useCallback(() => openSavedResume("overview"), [openSavedResume]);
 
   const removeSavedResume = useCallback(() => {
@@ -278,7 +304,6 @@ function App() {
       setJobInputMode("url");
       setJobDescription("");
       setJobUrl("");
-      setPasteStatus("idle");
       setAdditionalInformation("");
       setJobKeywords([]);
       setEvaluation(null);
@@ -345,7 +370,7 @@ function App() {
       const formData = new FormData();
       formData.append("cv", candidate);
       formData.append("intent", "extract");
-      const aiPromise = fetch("/api/interpret-cv", { method: "POST", body: formData });
+      const aiPromise = localReviewFetch("/api/interpret-cv", { method: "POST", body: formData });
       const [result, aiResponse] = await Promise.all([localPromise, aiPromise]);
       if (flowId !== flowIdRef.current) return;
       setPages(result.pages);
@@ -395,7 +420,7 @@ function App() {
     setStatus("improving");
     setError("");
     try {
-      const response = await fetch("/api/improve-cv", {
+      const response = await localReviewFetch("/api/improve-cv", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -478,17 +503,17 @@ function App() {
     runImprovement(originalCv, queuedContext);
   }, [finishWithoutImprovement, originalCv, queuedContext, runImprovement, status]);
 
-  const continueWithContext = (event, improveGenerally = false) => {
-    event.preventDefault();
+  const continueWithContext = (event, improveGenerally = false, jobUrlOverride = jobUrl) => {
+    event?.preventDefault();
     const hasValidObjective = jobInputMode === "url"
-      ? isValidJobUrl(jobUrl)
+      ? isValidJobUrl(jobUrlOverride)
       : Boolean(targetRole.trim());
     if (!improveGenerally && !hasValidObjective) {
       setError(jobInputMode === "url" ? "Pegá un link válido para personalizar tu CV." : "Ingresá el puesto objetivo para personalizar tu CV.");
       return;
     }
     const hasObjective = !improveGenerally && Boolean(
-      jobInputMode === "url" ? jobUrl.trim() : targetRole.trim()
+      jobInputMode === "url" ? jobUrlOverride.trim() : targetRole.trim()
     );
     const context = improveGenerally ? {
       mode: "general",
@@ -501,7 +526,7 @@ function App() {
     } : {
       mode: jobInputMode,
       hasObjective,
-      jobUrl: jobInputMode === "url" ? jobUrl : "",
+      jobUrl: jobInputMode === "url" ? jobUrlOverride : "",
       targetRole: jobInputMode === "manual" ? targetRole : "",
       additionalInformation: jobInputMode === "manual" ? additionalInformation : "",
       allowImprovement: true
@@ -531,7 +556,7 @@ function App() {
     }, "drawer");
     const flowId = flowIdRef.current;
     try {
-      const response = await fetch("/api/improve-cv", {
+      const response = await localReviewFetch("/api/improve-cv", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ cv: workingCv, revisionFeedback: revisionRequest })
@@ -605,7 +630,6 @@ function App() {
     setPdfError("");
 
     try {
-      const { jsPDF } = await import("jspdf");
       const document = new jsPDF({ unit: "mm", format: "a4", compress: true });
       const pageWidth = document.internal.pageSize.getWidth();
       const pageHeight = document.internal.pageSize.getHeight();
@@ -731,7 +755,7 @@ function App() {
     setCoverLetterError("");
     const flowId = flowIdRef.current;
     try {
-      const response = await fetch("/api/generate-cover-letter", {
+      const response = await localReviewFetch("/api/generate-cover-letter", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ cv: workingCv, jobUrl: jobUrl.trim() })
@@ -750,7 +774,6 @@ function App() {
 
   const downloadCoverLetter = async () => {
     if (!coverLetter) return;
-    const { jsPDF } = await import("jspdf");
     const document = new jsPDF({ unit: "mm", format: "a4", compress: true });
     const margin = 24;
     const width = document.internal.pageSize.getWidth() - margin * 2;
@@ -775,33 +798,51 @@ function App() {
   };
 
   const inFlow = phase !== "upload";
+  const startLocalReview = useCallback((scenario) => {
+    flowIdRef.current += 1;
+    const cv = scenario.interpret.cv;
+    withViewTransition(() => {
+      setFile({ name: `${scenario.name || "escenario-local"}.pdf`, size: 0, type: "application/pdf" });
+      setPages(1);
+      setOriginalCv(cv);
+      setWorkingCv(cv);
+      setFallbackText("");
+      setJobKeywords(Array.isArray(cv.jobKeywords) ? cv.jobKeywords : []);
+      setEvaluation(null);
+      setError("");
+      setResumeGoal(null);
+      setQueuedContext(null);
+      setImprovementAnalysis({ changes: [], questions: [] });
+      setImprovementSkipped(false);
+      setWorkflowStep(3);
+      setStatus("context-ready");
+      setPhase("context");
+      setPreviewOpen(false);
+      setJobAnalysis(scenario.interpret.jobAnalysis || { requested: false, sourceRead: false, sourceType: null });
+    }, "expand");
+  }, []);
   const canPersonalize = jobInputMode === "url" ? isValidJobUrl(jobUrl) : Boolean(targetRole.trim());
-  const pasteJobUrl = async () => {
-    if (!navigator.clipboard?.readText) {
-      setError("Tu navegador no permite pegar automáticamente. Podés usar Ctrl+V o ⌘V en el campo.");
-      return;
-    }
-
-    setPasteStatus("reading");
-    setError("");
-    try {
-      const clipboardText = (await navigator.clipboard.readText()).trim();
-      if (!clipboardText) {
-        setPasteStatus("idle");
-        setError("No hay ningún link en el portapapeles.");
-        return;
+  const navigateToFlowStep = (targetStep, currentStep) => {
+    if (targetStep >= currentStep) return;
+    flowIdRef.current += 1;
+    withViewTransition(() => {
+      setError("");
+      setQueuedContext(null);
+      setPreviewOpen(false);
+      if (targetStep === 1) {
+        setPhase("replace");
+        setStatus("idle");
+      } else if (targetStep === 2) {
+        setPhase("context");
+        setStatus("context-ready");
+        setImprovementSkipped(false);
+      } else {
+        setPhase("result");
+        setStatus("ready");
+        setWorkflowStep(targetStep);
+        if (targetStep === 4) setIterationComplete(true);
       }
-      if (!isValidJobUrl(clipboardText)) {
-        setPasteStatus("idle");
-        setError("El contenido del portapapeles no es un link válido.");
-        return;
-      }
-      setJobUrl(clipboardText.slice(0, 500));
-      setPasteStatus("pasted");
-    } catch {
-      setPasteStatus("idle");
-      setError("No pudimos acceder al portapapeles. Podés usar Ctrl+V o ⌘V en el campo.");
-    }
+    }, "step");
   };
   const openPreview = () => withViewTransition(() => {
     setPreviewZoom(window.innerWidth < 1280 ? 50 : 180);
@@ -830,6 +871,7 @@ function App() {
         <a className="brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand /></a>
         <div className="nav-actions">
           {!inFlow ? <a className="nav-link" href="#como-funciona" aria-label="Ver cómo funciona"><span>Cómo funciona</span><ArrowDown size={15} /></a> : null}
+          {process.env.NODE_ENV === "development" ? <LocalReviewPanel onStart={startLocalReview} /> : null}
         </div>
       </nav>
 
@@ -873,7 +915,30 @@ function App() {
             <div className="file-icon"><FileText size={31} strokeWidth={1.6} /><span>PDF</span></div>
             <h2>Empezá por tu CV actual</h2><p>Después podés adaptarlo a una oportunidad.</p><button type="button"><Upload size={17} /> Subir mi CV</button><small>PDF · Máximo 10 MB</small>
           </div>
-        ) : null) : phase === "overview" ? (
+        ) : null) : phase === "replace" ? (
+          <section className="context-step replace-upload-step" aria-labelledby="replace-upload-title">
+            <VisualFlowProgress currentStep={1} />
+            <div className="context-heading">
+              <span className="kicker">ACTUALIZAR CV</span>
+              <h2 id="replace-upload-title">Subí otra versión de tu CV.</h2>
+              <p>Al cargar un nuevo archivo volvemos a analizarlo antes de continuar.</p>
+            </div>
+            <div
+              className={`dropzone ${dragging ? "dragging" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={drop}
+              onClick={() => inputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
+            >
+              <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
+              <div className="file-icon"><FileText size={31} strokeWidth={1.6} /><span>PDF</span></div>
+              <h2>Elegí tu CV actualizado</h2><p>Podés subir una versión distinta para reemplazar la actual.</p><button type="button"><Upload size={17} /> Subir otro CV</button><small>PDF · Máximo 10 MB</small>
+            </div>
+          </section>
+        ) : phase === "overview" ? (
           <section className="context-step resume-overview" aria-labelledby="resume-overview-title">
             <div className="flow-progress compact-progress overview-progress" aria-label="Resumen de tu CV guardado"><strong>CV guardado · Lectura ATS</strong></div>
             <div className="overview-content">
@@ -897,7 +962,7 @@ function App() {
           </section>
         ) : phase === "context" ? (
           <form className="context-step" onSubmit={continueWithContext}>
-            <div className="flow-progress compact-progress" aria-label="Paso 2 de 5: objetivo"><strong>Paso 2 de 5 · Objetivo</strong></div>
+            <VisualFlowProgress currentStep={2} onStepClick={(step) => navigateToFlowStep(step, 2)} />
             {resumeGoal !== "personalize" ? <>
               <div className="context-heading choice-heading"><span className="kicker">ELEGÍ EL ENFOQUE</span><h2>¿Qué querés hacer con tu CV?</h2><p>Podés adaptarlo a una búsqueda concreta o mejorarlo sin enfocarlo en una oferta.</p></div>
               <div className="goal-choices" role="group" aria-label="Elegí cómo mejorar tu CV">
@@ -924,11 +989,7 @@ function App() {
                     <label className="sr-only" htmlFor="job-url">Link de la oferta</label>
                     <span className="job-url-input">
                       <Link2 size={16} aria-hidden="true" />
-                      <input id="job-url" type="url" name="job-url" value={jobUrl} onChange={(event) => { setJobUrl(event.target.value); setPasteStatus("idle"); setError(""); }} placeholder="https://empresa.com/jobs/product-designer" maxLength={500} required />
-                      <button type="button" className={`paste-url-button ${pasteStatus === "pasted" ? "pasted" : ""}`} onClick={pasteJobUrl} disabled={pasteStatus === "reading"} aria-label="Pegar link desde el portapapeles">
-                        {pasteStatus === "pasted" ? <Check size={14} /> : <ClipboardPaste size={14} />}
-                        {pasteStatus === "reading" ? "Pegando…" : pasteStatus === "pasted" ? "Pegado" : "Pegar"}
-                      </button>
+                      <input id="job-url" type="url" name="job-url" value={jobUrl} onChange={(event) => { setJobUrl(event.target.value); setError(""); }} placeholder="https://empresa.com/jobs/product-designer" maxLength={500} required />
                     </span>
                   </div>
                 ) : (
@@ -954,7 +1015,7 @@ function App() {
           </form>
         ) : phase === "waiting" ? (
           <section className="context-step waiting-step" aria-live="polite">
-            <div className="flow-progress compact-progress" aria-label="Paso 3 de 5: preparando CV"><strong>Paso 3 de 5 · Preparando CV</strong></div>
+            <VisualFlowProgress currentStep={3} onStepClick={(step) => navigateToFlowStep(step, 3)} />
             <div className="waiting-orbit">{queuedContext?.skipImprovement ? <FileText size={24} /> : <Sparkles size={24} />}</div>
             <h2>{queuedContext?.skipImprovement ? "Estamos preparando tu CV." : "Estamos mejorando tu CV."}</h2>
             <p>{queuedContext?.mode === "general" ? "Estamos optimizando su claridad, estructura e impacto profesional." : queuedContext?.skipImprovement ? "Enseguida vas a poder revisarlo y descargarlo." : "Lo estamos adaptando al objetivo con la experiencia que compartiste."}</p>
@@ -962,8 +1023,9 @@ function App() {
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
-            {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <div className="flow-progress compact-progress" aria-label={`Paso ${workflowStep} de 5`}><strong>Paso {workflowStep} de 5 · {workflowStep === 3 ? "Revisar versión" : workflowStep === 4 ? "Seguir mejorando" : "Descargar"}</strong></div>}
+            {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <VisualFlowProgress currentStep={workflowStep} onStepClick={(step) => navigateToFlowStep(step, workflowStep)} />}
             <div className={`improvement-content ${status === "revising" ? "is-loading" : ""} ${workflowStep === 4 && !iterationComplete && activeQuestion ? "is-personalizing" : ""}`}>
+              <div className="improvement-scroll-content">
               {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
               <p>{workflowStep === 3 ? "Revisá el resultado y elegí si está listo." : workflowStep === 4 ? iterationComplete ? "Revisá el resultado o hacé otra iteración." : "Respondé solo lo que puedas confirmar." : improvementSkipped ? "No aplicamos cambios al contenido." : "Descargá la versión lista para postularte."}</p>
@@ -984,17 +1046,16 @@ function App() {
                 </div>
                 {coverLetterError ? <div className="cover-letter-error"><X size={14} />{coverLetterError}<button type="button" onClick={generateCoverLetter}>Reintentar</button></div> : null}
               </section> : null}
-              {workflowStep === 4 && iterationComplete && perfectMatch ? <div className="perfect-result"><span><Check size={18} /></span><div><strong>100/100 ATS · 100/100 coincidencia</strong><small>Todos los controles y requisitos detectados están cubiertos.</small></div></div> : null}
               {workflowStep === 3 || workflowStep === 4 && iterationComplete ? <div className={`step-results ${atsAudit.matchScore === null ? "without-match" : ""}`}>
                 <article><span>Lectura ATS</span><strong>{atsAudit.technicalScore}<small>/100</small></strong><p>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</p></article>
                 {atsAudit.matchScore !== null ? <article><span>Coincidencia</span><strong>{atsAudit.matchScore}<small>/100</small></strong><p>{atsAudit.matched.length} requisitos respaldados</p></article> : null}
                 <article><span>Cambios</span><strong>{improvementAnalysis.changes.length}</strong><p>{improvementAnalysis.changes.length ? "mejoras explicadas en esta versión" : "sin cambios de contenido"}</p></article>
               </div> : null}
-              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation changes-explanation"><summary><span><b>Qué cambió en esta versión</b><small>Compará cada ajuste y por qué lo hicimos</small></span><span className="change-count">{improvementAnalysis.changes.length} {improvementAnalysis.changes.length === 1 ? "cambio" : "cambios"}<ChevronDown size={15} /></span></summary><div className="change-list" aria-live="polite">{improvementAnalysis.changes.map((change, index) => { const isActive = index === Math.min(activeChangeIndex, improvementAnalysis.changes.length - 1); return <article className={`change-card ${isActive ? "is-active" : ""}`} key={`${change.section}-${index}`} aria-hidden={!isActive} inert={!isActive ? "" : undefined}><header><span className="change-index">{String(index + 1).padStart(2, "0")}</span><div className="change-title"><small>Sección modificada</small><h3>{change.section || "Contenido"}</h3></div>{improvementAnalysis.changes.length > 1 ? <nav className="change-navigation" aria-label="Navegación entre cambios"><span>{index + 1} / {improvementAnalysis.changes.length}</span><button type="button" onClick={() => setActiveChangeIndex((current) => Math.max(0, current - 1))} disabled={index === 0} aria-label="Ver cambio anterior"><ArrowLeft size={15} /></button><button type="button" onClick={() => setActiveChangeIndex((current) => Math.min(improvementAnalysis.changes.length - 1, current + 1))} disabled={index === improvementAnalysis.changes.length - 1} aria-label="Ver cambio siguiente"><ArrowRight size={15} /></button></nav> : null}</header><div className="change-comparison"><section className="change-before" aria-label="Contenido anterior"><small>Antes</small><p>{change.before || "—"}</p></section><section className="change-after" aria-label="Contenido mejorado"><small>Después</small><p>{change.after || "—"}</p></section></div>{change.reason ? <div className="change-reason"><small>Por qué lo cambiamos</small><p>{change.reason}</p></div> : null}</article>; })}</div></details> : null}
+              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation changes-explanation"><summary><span><b>Qué cambió en esta versión</b><small>Compará cada ajuste y por qué lo hicimos</small></span><span className="change-count">{improvementAnalysis.changes.length} {improvementAnalysis.changes.length === 1 ? "cambio" : "cambios"}<ChevronDown size={15} /></span></summary><div className="change-list" aria-live="polite">{improvementAnalysis.changes.map((change, index) => { const isActive = index === Math.min(activeChangeIndex, improvementAnalysis.changes.length - 1); return <article className={`change-card ${isActive ? "is-active" : ""}`} key={`${change.section}-${index}`} aria-hidden={!isActive} inert={!isActive}><header><span className="change-index">{String(index + 1).padStart(2, "0")}</span><div className="change-title"><small>Sección modificada</small><h3>{change.section || "Contenido"}</h3></div>{improvementAnalysis.changes.length > 1 ? <nav className="change-navigation" aria-label="Navegación entre cambios"><span>{index + 1} / {improvementAnalysis.changes.length}</span><button type="button" onClick={() => setActiveChangeIndex((current) => Math.max(0, current - 1))} disabled={index === 0} aria-label="Ver cambio anterior"><ArrowLeft size={15} /></button><button type="button" onClick={() => setActiveChangeIndex((current) => Math.min(improvementAnalysis.changes.length - 1, current + 1))} disabled={index === improvementAnalysis.changes.length - 1} aria-label="Ver cambio siguiente"><ArrowRight size={15} /></button></nav> : null}</header><div className="change-comparison"><section className="change-before" aria-label="Contenido anterior"><small>Antes</small><p>{change.before || "—"}</p></section><section className="change-after" aria-label="Contenido mejorado"><small>Después</small><p>{change.after || "—"}</p></section></div>{change.reason ? <div className="change-reason"><small>Por qué lo cambiamos</small><p>{change.reason}</p></div> : null}</article>; })}</div></details> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.matchScore !== null ? <details className="step-explanation match-explanation"><summary><span>Cómo calculamos la coincidencia</span><small>{atsAudit.matchScore}/100</small></summary><div className="match-breakdown"><p><strong>{atsAudit.matched.length}</strong><span>requisitos respaldados</span></p><p><strong>{atsAudit.missing.length}</strong><span>ausentes o sin evidencia</span></p><small>El puntaje es el porcentaje de requisitos detectados en la oferta que aparecen explícitamente, mediante una equivalencia clara o con evidencia suficiente en el CV.</small>{atsAudit.matched.length ? <div><b>Cubiertos</b>{atsAudit.matched.join(" · ")}</div> : null}{atsAudit.missing.length ? <div><b>Por trabajar</b>{atsAudit.missing.join(" · ")}</div> : null}</div></details> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.checks.some((check) => !check.pass) ? <details className="step-explanation findings-details"><summary><span>Ver recomendaciones</span><small>{atsAudit.checks.filter((check) => !check.pass).length}</small></summary><div className="step-findings"><strong>Recomendaciones</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 3).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div></details> : null}
               {workflowStep === 4 && !iterationComplete && activeQuestion ? <div className="agent-questions question-stepper">
-                <div className="question-head"><div><strong>{activeQuestion.freeform ? "Información adicional" : "Preguntas para aumentar la coincidencia"}</strong><p>{activeQuestion.freeform ? "Este último campo siempre es opcional." : "Respondé sólo lo que puedas confirmar."}</p></div><div className="question-counter"><span>{activeQuestionIndex + 1} / {iterationSteps.length}</span>{!activeQuestion.freeform ? <button type="button" onClick={() => setActiveQuestionIndex(iterationSteps.length - 1)}>Saltar todas</button> : null}</div></div>
+                <div className="question-head"><div><strong>{activeQuestion.freeform ? "Información adicional" : "Preguntas para aumentar la coincidencia"}</strong><p>{activeQuestion.freeform ? "Este último campo siempre es opcional." : "Respondé sólo lo que puedas confirmar."}</p></div><div className="question-counter"><span>{activeQuestionIndex + 1} / {iterationSteps.length}</span>{!activeQuestion.freeform ? <button type="button" onClick={() => setIterationComplete(true)}>Saltar todas</button> : null}</div></div>
                 <div className="question-progress" aria-label={`Paso ${activeQuestionIndex + 1} de ${iterationSteps.length}`}>{iterationSteps.map((question, index) => { const key = question.id || index; const answered = question.freeform ? feedbackNote.trim() : questionQuickAnswers[key] || questionAnswers[key]?.trim(); return <i key={key} className={index === activeQuestionIndex ? "active" : answered ? "answered" : index < activeQuestionIndex ? "skipped" : ""} />; })}</div>
                 <div className="question-card"><span>{String(activeQuestionIndex + 1).padStart(2, "0")}</span><div><strong>{activeQuestion.question}</strong>{activeQuestion.why ? <small>{activeQuestion.why}</small> : null}{activeQuestion.freeform ? <textarea className="question-freeform" value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} placeholder="Más datos, contexto o cambios que quieras pedir…" rows={3} autoFocus /> : <><div className="quick-answers" role="group" aria-label="Respuesta rápida">{activeQuickAnswers.map((answer) => { const questionKey = activeQuestion.id || activeQuestionIndex; const selected = questionQuickAnswers[questionKey] === answer; return <button key={answer} type="button" aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setQuestionQuickAnswers((current) => ({ ...current, [questionKey]: answer })); setActiveQuestionIndex((index) => Math.min(iterationSteps.length - 1, index + 1)); }}>{selected ? <Check size={14} /> : null}{answer}</button>; })}</div><details className="answer-details" open={Boolean(questionAnswers[activeQuestion.id || activeQuestionIndex])}><summary>Respuesta personalizada</summary><textarea value={questionAnswers[activeQuestion.id || activeQuestionIndex] || ""} onChange={(event) => setQuestionAnswers((current) => ({ ...current, [activeQuestion.id || activeQuestionIndex]: event.target.value }))} placeholder="Escribí tu respuesta…" rows={3} /></details></>}</div></div>
                 <div className="question-actions">
@@ -1006,8 +1067,9 @@ function App() {
                 </div>
               </div> : null}
               {workflowStep === 5 && pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
+              </div>
               {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <div className="step-feedback">
-                <button type="button" className="step-back tertiary-action" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
+                <button type="button" className="back-button tertiary-action" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
                 {workflowStep === 5 ? <button type="button" className="start-new-flow tertiary-action" onClick={resetFlow}><RotateCcw size={15} /> Empezar de nuevo</button> : null}
                 {workflowStep === 3 ? <><button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button><button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}
                 {workflowStep === 4 && iterationComplete ? <>{!perfectMatch ? <button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir mejorando</button> : null}<button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}

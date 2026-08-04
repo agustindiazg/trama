@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "dev:review": "next dev",
+    "build": "next build && node scripts/assert-production-clean.mjs",
     "start": "next start",
     "test": "node --test app/**/*.test.js",
     "marketing:install": "npm --prefix marketing-video install",
