@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom";
 import {
   ArrowDown, ArrowLeft, ArrowRight, Check, ChevronDown, ClipboardPaste, Download,
-  FileText, Link2, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Trash2, Upload, X
+  FileText, Link2, LockKeyhole, Mail, Maximize2, Minus, Plus, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
 import { mergeChangeHistory } from "./lib/change-history";
@@ -133,7 +133,8 @@ function App() {
   const [coverLetter, setCoverLetter] = useState(null);
   const [coverLetterStatus, setCoverLetterStatus] = useState("idle");
   const [coverLetterError, setCoverLetterError] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(180);
   const [savedResume, setSavedResume] = useState(null);
   const [savedResumeHydrated, setSavedResumeHydrated] = useState(false);
   const [improvementSkipped, setImprovementSkipped] = useState(false);
@@ -150,6 +151,20 @@ function App() {
     if (deleteDialogOpen && !dialog.open) dialog.showModal();
     if (!deleteDialogOpen && dialog.open) dialog.close();
   }, [deleteDialogOpen]);
+
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setPreviewOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [previewOpen]);
 
   useEffect(() => {
     try {
@@ -208,7 +223,7 @@ function App() {
       setWorkflowStep(3);
       setStatus(destination === "overview" ? "ready" : "context-ready");
       setPhase(destination === "overview" ? "overview" : "context");
-      setPreviewOpen(true);
+      setPreviewOpen(destination === "overview");
       setJobAnalysis({ requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: false, sourceType: null });
     }, "expand");
   }, [jobDescription, jobUrl, savedResume]);
@@ -265,7 +280,7 @@ function App() {
       setCoverLetter(null);
       setCoverLetterStatus("idle");
       setCoverLetterError("");
-      setPreviewOpen(true);
+      setPreviewOpen(false);
       setImprovementSkipped(false);
       if (inputRef.current) inputRef.current.value = "";
       window.scrollTo(0, 0);
@@ -398,7 +413,7 @@ function App() {
         setWorkflowStep(3);
         setIterationComplete(false);
         setQueuedContext(null);
-        setPreviewOpen(true);
+        setPreviewOpen(false);
       }, "step");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
@@ -433,7 +448,7 @@ function App() {
       setWorkflowStep(5);
       setStatus("ready");
       setPhase("result");
-      setPreviewOpen(true);
+      setPreviewOpen(false);
     }, "step");
   }, [file, pages]);
 
@@ -530,14 +545,14 @@ function App() {
         setWorkflowStep(4);
         setIterationComplete(true);
         setStatus("ready");
-        setPreviewOpen(true);
-      }, "drawer");
+        setPreviewOpen(false);
+      }, "step");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
       withViewTransition(() => {
         setStatus("ready");
         setError(err.message || "No pudimos aplicar el feedback.");
-      }, "drawer");
+      }, "step");
     }
   };
 
@@ -771,7 +786,10 @@ function App() {
       setError("No pudimos acceder al portapapeles. Podés usar Ctrl+V o ⌘V en el campo.");
     }
   };
-  const togglePreview = () => withViewTransition(() => setPreviewOpen((open) => !open), "drawer");
+  const togglePreview = () => withViewTransition(() => {
+    if (!previewOpen) setPreviewZoom(window.innerWidth < 1280 ? 50 : 180);
+    setPreviewOpen((open) => !open);
+  }, "preview");
   const personalizeResume = () => withViewTransition(() => {
     setPhase("context");
     setResumeGoal("personalize");
@@ -785,13 +803,12 @@ function App() {
   };
 
   return (
-    <main className={`${inFlow ? "app-mode" : ""}${status === "ready" && previewOpen ? " preview-open" : ""}`}>
+    <main className={inFlow ? "app-mode" : ""}>
       <nav className="nav">
         <a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a>
         <div className="nav-actions">
           {phase === "result" && status === "ready" ? <>
-            <a className="nav-preview mobile-only" href="#preview-document"><FileText size={14} /> Revisar preview</a>
-            <button type="button" className="nav-preview desktop-only" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={14} /> {previewOpen ? "Ocultar preview" : "Revisar preview"}</button>
+            <button type="button" className="nav-preview" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={14} /> Revisar CV</button>
           </> : null}
           {!inFlow ? <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a> : null}
         </div>
@@ -839,21 +856,23 @@ function App() {
           </div>
         ) : null) : phase === "overview" ? (
           <section className="context-step resume-overview" aria-labelledby="resume-overview-title">
-            <div className="overview-heading">
-              <span className="kicker">TU CV GUARDADO</span>
-              <h2 id="resume-overview-title">Revisá tu CV cuando quieras.</h2>
-              <p>Esta es la versión guardada en este dispositivo. Podés comprobar su lectura ATS, descargarla o personalizarla para una propuesta.</p>
+            <div className="flow-progress compact-progress overview-progress" aria-label="Resumen de tu CV guardado"><strong>CV guardado · Lectura ATS</strong></div>
+            <div className="overview-content">
+              <div className="overview-heading">
+                <span className="kicker">TU CV GUARDADO</span>
+                <h2 id="resume-overview-title">Revisá tu CV cuando quieras.</h2>
+                <p>Esta es la versión guardada en este dispositivo. Podés comprobar su lectura ATS, descargarla o personalizarla para una propuesta.</p>
+              </div>
+              <div className="overview-score" aria-label={`Puntaje de lectura ATS: ${atsAudit.technicalScore} sobre 100`}>
+                <div><strong>{atsAudit.technicalScore}</strong><span>/100</span></div>
+                <div><small>LECTURA ATS</small><strong>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</strong><p>Evalúa estructura, secciones y legibilidad. La coincidencia con una oferta se calcula cuando personalizás el CV.</p></div>
+              </div>
+              {atsAudit.checks.some((check) => !check.pass) ? <div className="overview-findings"><strong>Qué podrías mejorar</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 2).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div> : <div className="overview-pass"><Check size={16} /><span><strong>Buena lectura técnica</strong><small>El CV supera todos los controles básicos para ATS.</small></span></div>}
+              {pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
             </div>
-            <div className="overview-score" aria-label={`Puntaje de lectura ATS: ${atsAudit.technicalScore} sobre 100`}>
-              <div><strong>{atsAudit.technicalScore}</strong><span>/100</span></div>
-              <div><small>LECTURA ATS</small><strong>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</strong><p>Evalúa estructura, secciones y legibilidad. La coincidencia con una oferta se calcula cuando personalizás el CV.</p></div>
-            </div>
-            {atsAudit.checks.some((check) => !check.pass) ? <div className="overview-findings"><strong>Qué podrías mejorar</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 2).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div> : <div className="overview-pass"><Check size={16} /><span><strong>Buena lectura técnica</strong><small>El CV supera todos los controles básicos para ATS.</small></span></div>}
-            {pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
             <div className="overview-actions">
-              <button type="button" className="personalize-resume" onClick={personalizeResume}><Target size={15} /> Personalizar para una propuesta <ArrowRight size={15} /></button>
-              <a className="preview-link mobile-only" href="#preview-document"><FileText size={15} /> Ver preview</a>
-              <button type="button" className="preview-link desktop-only" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={15} /> {previewOpen ? "Ocultar preview" : "Ver preview"}</button>
+              <button type="button" className="personalize-resume primary-action" onClick={personalizeResume}><Target size={15} /> Personalizar para una propuesta <ArrowRight size={15} /></button>
+              <button type="button" className="preview-link" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={15} /> Revisar CV</button>
               <button type="button" className="final-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar PDF"}</button>
             </div>
           </section>
@@ -978,8 +997,27 @@ function App() {
         {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> Tu versión queda en este dispositivo</span><span><Target size={15} /> Optimizado para tu oferta</span></div> : null}
       </section>
 
-      {status === "ready" && (
-        <section className="result" id="resultado">
+      {status === "ready" && previewOpen && (
+        <section className="result preview-review" id="resultado" role="dialog" aria-modal="true" aria-labelledby="preview-review-title">
+          <header className="preview-review-bar">
+            <button type="button" className="preview-close" onClick={togglePreview}><ArrowLeft size={17} /> Volver al flujo</button>
+            <div className="preview-review-title">
+              <span className="kicker">VISTA PREVIA</span>
+              <strong id="preview-review-title">{file?.name || "Tu CV"}</strong>
+              <small>{pages || 1} {pages === 1 ? "página" : "páginas"}</small>
+            </div>
+            <div className="preview-review-actions">
+              <div className="preview-zoom" role="group" aria-label="Zoom del documento">
+                <button type="button" aria-label="Alejar" disabled={previewZoom <= 40} onClick={() => setPreviewZoom((zoom) => Math.max(40, zoom - 10))}><Minus size={15} /></button>
+                <span>{previewZoom}%</span>
+                <button type="button" aria-label="Acercar" disabled={previewZoom >= 200} onClick={() => setPreviewZoom((zoom) => Math.min(200, zoom + 10))}><Plus size={15} /></button>
+                <button type="button" className="preview-fit" aria-label="Ajustar al 100%" title="Ajustar al 100%" onClick={() => setPreviewZoom(100)}><Maximize2 size={14} /></button>
+              </div>
+              <button type="button" className="preview-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> <span>{pdfStatus === "generating" ? "Generando…" : "Descargar PDF"}</span></button>
+              <button type="button" className="preview-dismiss" aria-label="Cerrar vista previa" onClick={togglePreview}><X size={18} /></button>
+            </div>
+          </header>
+          {pdfError ? <div className="pdf-error" role="alert"><X size={14} />{pdfError}</div> : null}
           {phase !== "overview" ? <div className="result-stepper"><a href="#flujo-mejoras">Volver al flujo</a><span>CV <Check size={12} /></span><i /><span>{improvementSkipped ? "Sin objetivo" : "Objetivo"} <Check size={12} /></span><i /><span className={workflowStep === 3 ? "active" : ""}>{improvementSkipped ? "Sin mejoras" : "CV mejorado"}</span><i /><span className={workflowStep === 4 ? "active" : ""}>{improvementSkipped ? "Omitido" : "Seguir mejorando"}</span><i /><span className={workflowStep === 5 ? "active" : ""}>Final</span></div> : null}
           {false ? <>
           <div className="result-head">
@@ -1040,8 +1078,8 @@ function App() {
           <div className="workspace" id="preview-document">
             <div className="workspace-content preview-only">
               <div className="preview-pane">
-                <div className="paper-wrap">
-                  <article className="resume-paper">
+                <div className="paper-wrap preview-canvas">
+                  <article className="resume-paper" style={{ zoom: previewZoom / 100 }}>
                     <h1>{preview.name}</h1>
                     {preview.headline ? <p className="paper-headline">{preview.headline}</p> : null}
                     {preview.contactLine ? <p className="paper-contact">{preview.contactLine}</p> : null}
@@ -1056,6 +1094,12 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+          <div className="preview-mobile-zoom" role="group" aria-label="Zoom del documento">
+            <button type="button" aria-label="Alejar" disabled={previewZoom <= 40} onClick={() => setPreviewZoom((zoom) => Math.max(40, zoom - 10))}><Minus size={18} /></button>
+            <span>{previewZoom}%</span>
+            <button type="button" aria-label="Acercar" disabled={previewZoom >= 200} onClick={() => setPreviewZoom((zoom) => Math.min(200, zoom + 10))}><Plus size={18} /></button>
+            <button type="button" className="preview-mobile-fit" aria-label="Ajustar al 100%" onClick={() => setPreviewZoom(100)}><Maximize2 size={17} /><span>100%</span></button>
           </div>
           {workflowStep === 5 && coverLetter ? <section className="cover-letter-document" aria-label="Vista previa de la cover letter">
               <article><h4>{coverLetter.senderName}</h4><p className="letter-target">{coverLetter.role} · {coverLetter.company}</p><p>{coverLetter.greeting}</p>{coverLetter.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}<p>{coverLetter.closing}<br /><strong>{coverLetter.senderName}</strong></p></article>
