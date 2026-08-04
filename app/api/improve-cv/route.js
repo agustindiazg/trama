@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { calculateCost } from "@/lib/costCalculator";
-import { logCost } from "@/lib/costLogger";
+import { logCost, logJobAnalysis } from "@/lib/costLogger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -207,6 +207,23 @@ Si hay oferta, puesto objetivo o requisitos en cv.jobKeywords, questions debe co
         hasObjective: hasObjective
       }
     });
+
+    // LOG JOB ANALYSIS (if job/offer was analyzed)
+    if (hasObjective && cv.jobKeywords && cv.jobKeywords.length > 0) {
+      await logJobAnalysis({
+        action: "analyze-job-posting",
+        sourceType: linkedJobText ? "url" : suppliedDescription ? "text" : targetRole ? "role" : null,
+        jobUrl: jobUrl || null,
+        targetRole: targetRole || null,
+        keywordsDetected: cv.jobKeywords.length,
+        keywordsSummary: cv.jobKeywords.map(kw => ({
+          term: kw.term,
+          status: kw.status
+        })),
+        questionsGenerated: analysis.questions?.length || 0,
+        changesApplied: analysis.changes?.length || 0
+      });
+    }
 
     return NextResponse.json({ cv, analysis, model: payload.model, usage: payload.usage, _cost: cost.total, jobAnalysis: { requested: Boolean(jobUrl || suppliedDescription || targetRole), sourceRead: Boolean(jobDescription || targetRole), sourceType: linkedJobText ? "url" : suppliedDescription ? "text" : targetRole ? "role" : null } });
   } catch (error) {
