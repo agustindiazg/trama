@@ -280,6 +280,14 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .improvement-content.is-personalizing .agent-questions { margin: 0; border: 0; }
 .improvement-content h2 { max-width: 640px; margin: 9px 0 12px; font-size: clamp(31px, 4.5vw, 50px); line-height: 1.02; letter-spacing: -.055em; }
 .improvement-content > p { max-width: 620px; margin: 0; color: #5d6861; font-size: 13px; line-height: 1.6; }
+.content-preview-action { margin-top: 26px; padding: 15px 17px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid var(--ink); background: rgba(215,255,82,.16); }
+.content-preview-action > div { display: flex; align-items: center; gap: 13px; }
+.content-preview-action > div > span { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; color: var(--paper); background: var(--ink); }
+.content-preview-action p, .content-preview-action strong, .content-preview-action small { display: block; margin: 0; }
+.content-preview-action strong { font-size: 12px; }
+.content-preview-action small { margin-top: 3px; color: #647068; font-size: 10px; line-height: 1.4; }
+.content-preview-action button { min-height: 40px; padding: 0 13px; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ink); border: 1px solid var(--ink); background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; transition: color .15s, background .15s; }
+.content-preview-action button:hover { color: var(--paper); background: var(--ink); }
 .step-feedback { margin: 44px -34px -38px; padding: 24px 30px; display: flex; align-items: center; flex-wrap: wrap; gap: 24px; border-top: 1px solid #b8bcb4; background: rgba(23,35,29,.025); }
 .step-feedback button, .step-feedback a { min-height: 42px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; }
 .step-feedback button { color: var(--ink); background: transparent; }
@@ -859,6 +867,8 @@ html[data-vt-direction="preview"] ::view-transition-new(root) { animation-durati
   .context-actions .tertiary-action { width: fit-content; }
   .context-primary-actions .skip-button { align-self: center; }
   .improvement-content { padding: 34px 20px 28px; }
+  .content-preview-action { align-items: stretch; flex-direction: column; }
+  .content-preview-action button { width: 100%; justify-content: center; }
   .step-feedback { margin: 32px -20px -28px; padding: 20px; align-items: stretch; flex-direction: column-reverse; gap: 14px; }
   .step-feedback button, .step-feedback a { width: 100%; margin-left: 0; }
   .step-feedback .step-back, .step-feedback .secondary-action, .step-feedback .tertiary-action { width: fit-content; }

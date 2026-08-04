@@ -803,9 +803,14 @@ function App() {
       setError("No pudimos acceder al portapapeles. Podés usar Ctrl+V o ⌘V en el campo.");
     }
   };
-  const togglePreview = () => withViewTransition(() => {
-    if (!previewOpen) setPreviewZoom(window.innerWidth < 1280 ? 50 : 180);
-    setPreviewOpen((open) => !open);
+  const openPreview = () => withViewTransition(() => {
+    setPreviewZoom(window.innerWidth < 1280 ? 50 : 180);
+    setPreviewOpen(true);
+  }, "preview");
+  const closePreview = () => withViewTransition(() => {
+    // El visor es una capa: cerrarlo no debe modificar el paso ni el estado
+    // de una iteración en curso.
+    setPreviewOpen(false);
   }, "preview");
   const personalizeResume = () => withViewTransition(() => {
     setPhase("context");
@@ -824,9 +829,6 @@ function App() {
       <nav className="nav" aria-label="Navegación principal">
         <a className="brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand /></a>
         <div className="nav-actions">
-          {phase === "result" && status === "ready" ? <>
-            <button type="button" className="nav-preview" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={14} /> Revisar CV</button>
-          </> : null}
           {!inFlow ? <a className="nav-link" href="#como-funciona" aria-label="Ver cómo funciona"><span>Cómo funciona</span><ArrowDown size={15} /></a> : null}
         </div>
       </nav>
@@ -889,7 +891,7 @@ function App() {
             </div>
             <div className="overview-actions">
               <button type="button" className="personalize-resume primary-action" onClick={personalizeResume}><Target size={15} /> Personalizar para una propuesta <ArrowRight size={15} /></button>
-              <button type="button" className="preview-link" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={15} /> Revisar CV</button>
+              <button type="button" className="preview-link" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={openPreview}><FileText size={15} /> Revisar CV</button>
               <button type="button" className="final-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar PDF"}</button>
             </div>
           </section>
@@ -965,6 +967,10 @@ function App() {
               {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
               <p>{workflowStep === 3 ? "Revisá el resultado y elegí si está listo." : workflowStep === 4 ? iterationComplete ? "Revisá el resultado o hacé otra iteración." : "Respondé solo lo que puedas confirmar." : improvementSkipped ? "No aplicamos cambios al contenido." : "Descargá la versión lista para postularte."}</p>
+              {(workflowStep === 3 || workflowStep === 4 && iterationComplete || workflowStep === 5) ? <div className="content-preview-action">
+                <div><span><FileText size={18} /></span><p><strong>Revisá el PDF completo</strong><small>Comprobá cómo quedó tu CV antes de confirmar o descargar.</small></p></div>
+                <button type="button" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={openPreview}>Abrir vista previa <ArrowUpRight size={16} /></button>
+              </div> : null}
               {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
                 <div className="cover-letter-intro">
                   <span><Mail size={18} /></span>
@@ -1017,7 +1023,7 @@ function App() {
       {status === "ready" && previewOpen && (
         <section className="result preview-review" id="resultado" role="dialog" aria-modal="true" aria-labelledby="preview-review-title">
           <header className="preview-review-bar">
-            <button type="button" className="preview-close" onClick={togglePreview}><ArrowLeft size={17} /> Volver al flujo</button>
+            <button type="button" className="preview-close" onClick={closePreview}><ArrowLeft size={17} /> {phase === "overview" ? "Volver al resumen" : `Volver al paso ${workflowStep}`}</button>
             <div className="preview-review-title">
               <span className="kicker">VISTA PREVIA</span>
               <strong id="preview-review-title">{file?.name || "Tu CV"}</strong>
@@ -1031,7 +1037,7 @@ function App() {
                 <button type="button" className="preview-fit" aria-label="Ajustar al 100%" title="Ajustar al 100%" onClick={() => setPreviewZoom(100)}><Maximize2 size={14} /></button>
               </div>
               <button type="button" className="preview-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> <span>{pdfStatus === "generating" ? "Generando…" : "Descargar PDF"}</span></button>
-              <button type="button" className="preview-dismiss" aria-label="Cerrar vista previa" onClick={togglePreview}><X size={18} /></button>
+              <button type="button" className="preview-dismiss" aria-label={phase === "overview" ? "Cerrar y volver al resumen" : `Cerrar y volver al paso ${workflowStep}`} onClick={closePreview}><X size={18} /></button>
             </div>
           </header>
           {pdfError ? <div className="pdf-error" role="alert"><X size={14} />{pdfError}</div> : null}
