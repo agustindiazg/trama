@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  ArrowDown, ArrowLeft, ArrowRight, Check, ChevronDown, ClipboardPaste, Download,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, ClipboardPaste, Download,
   FileText, Link2, LockKeyhole, Mail, Maximize2, Minus, Plus, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
@@ -72,6 +72,23 @@ async function extractPdfText(file) {
 
 const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function TramaLogo({ inverse = false }) {
+  return (
+    <span className={`trama-logo${inverse ? " trama-logo--inverse" : ""}`} aria-hidden="true">
+      <svg viewBox="0 0 44 44" role="img">
+        <path className="trama-logo-frame" d="M3 3h38v38H3z" />
+        <path className="trama-logo-thread" d="M11 13h22M22 13v18c0 3.4 2.4 5 5.2 5 2.1 0 3.8-.8 5.3-2.4" />
+        <circle cx="11" cy="13" r="2.4" />
+        <circle cx="32.5" cy="33.6" r="2.4" />
+      </svg>
+    </span>
+  );
+}
+
+function Brand({ inverse = false }) {
+  return <><TramaLogo inverse={inverse} /><span className="brand-word">trama</span><span className="brand-descriptor">Mejoramos tu CV</span></>;
+}
 
 // Anima cambios de fase con la View Transition API. `direction` ("expand" |
 // "step" | "collapse") se expone en <html data-vt-direction> para ajustar la
@@ -804,13 +821,13 @@ function App() {
 
   return (
     <main className={inFlow ? "app-mode" : ""}>
-      <nav className="nav">
-        <a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a>
+      <nav className="nav" aria-label="Navegación principal">
+        <a className="brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand /></a>
         <div className="nav-actions">
           {phase === "result" && status === "ready" ? <>
             <button type="button" className="nav-preview" aria-haspopup="dialog" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={14} /> Revisar CV</button>
           </> : null}
-          {!inFlow ? <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a> : null}
+          {!inFlow ? <a className="nav-link" href="#como-funciona" aria-label="Ver cómo funciona"><span>Cómo funciona</span><ArrowDown size={15} /></a> : null}
         </div>
       </nav>
 
@@ -1141,7 +1158,14 @@ function App() {
         </div>
       </section> : null}
 
-      {!inFlow ? <footer><a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer> : null}
+      {!inFlow ? <footer className="site-footer">
+        <div className="footer-top">
+          <a className="brand footer-brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand inverse /></a>
+          <p>Tu experiencia tiene valor.<br /><em>Hagamos que se note.</em></p>
+          <a className="footer-cta" href="#top" onClick={(event) => { event.preventDefault(); window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }}>Preparar mi CV <ArrowUpRight size={18} /></a>
+        </div>
+        <div className="footer-bottom"><span>Tu experiencia, mejor presentada.</span><span>Hecho con intención en Argentina · 2026</span><span>Privado por diseño</span></div>
+      </footer> : null}
 
       <dialog
         ref={deleteDialogRef}
