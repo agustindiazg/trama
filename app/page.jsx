@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  ArrowDown, ArrowRight, Check, ChevronDown, ClipboardPaste, Download,
+  ArrowDown, ArrowLeft, ArrowRight, Check, ChevronDown, ClipboardPaste, Download,
   FileText, Link2, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
@@ -126,6 +126,7 @@ function App() {
   const [questionAnswers, setQuestionAnswers] = useState({});
   const [questionQuickAnswers, setQuestionQuickAnswers] = useState({});
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [activeChangeIndex, setActiveChangeIndex] = useState(0);
   const [iterationComplete, setIterationComplete] = useState(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [coverLetter, setCoverLetter] = useState(null);
@@ -180,6 +181,10 @@ function App() {
       additionalInformation
     }));
   }, [targetRole, jobDescription, jobUrl, additionalInformation, settingsHydrated]);
+
+  useEffect(() => {
+    setActiveChangeIndex((current) => Math.min(current, Math.max(0, improvementAnalysis.changes.length - 1)));
+  }, [improvementAnalysis.changes.length]);
 
   const openSavedResume = useCallback((destination = "context") => {
     if (!savedResume) return;
@@ -938,7 +943,7 @@ function App() {
                 {atsAudit.matchScore !== null ? <article><span>Coincidencia</span><strong>{atsAudit.matchScore}<small>/100</small></strong><p>{atsAudit.matched.length} requisitos respaldados</p></article> : null}
                 <article><span>Cambios</span><strong>{improvementAnalysis.changes.length}</strong><p>{improvementAnalysis.changes.length ? "mejoras explicadas en esta versión" : "sin cambios de contenido"}</p></article>
               </div> : null}
-              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation changes-explanation"><summary><span><b>Qué cambió en esta versión</b><small>Compará cada ajuste y por qué lo hicimos</small></span><span className="change-count">{improvementAnalysis.changes.length} {improvementAnalysis.changes.length === 1 ? "cambio" : "cambios"}<ChevronDown size={15} /></span></summary><div className="change-list">{improvementAnalysis.changes.map((change, index) => <article className="change-card" key={`${change.section}-${index}`}><header><span className="change-index">{String(index + 1).padStart(2, "0")}</span><div><small>Sección modificada</small><h3>{change.section || "Contenido"}</h3></div></header><div className="change-comparison"><section className="change-before" aria-label="Contenido anterior"><small>Antes</small><p>{change.before || "—"}</p></section><section className="change-after" aria-label="Contenido mejorado"><small>Después</small><p>{change.after || "—"}</p></section></div>{change.reason ? <div className="change-reason"><small>Por qué lo cambiamos</small><p>{change.reason}</p></div> : null}</article>)}</div></details> : null}
+              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation changes-explanation"><summary><span><b>Qué cambió en esta versión</b><small>Compará cada ajuste y por qué lo hicimos</small></span><span className="change-count">{improvementAnalysis.changes.length} {improvementAnalysis.changes.length === 1 ? "cambio" : "cambios"}<ChevronDown size={15} /></span></summary><div className="change-list">{(() => { const change = improvementAnalysis.changes[Math.min(activeChangeIndex, improvementAnalysis.changes.length - 1)]; const index = Math.min(activeChangeIndex, improvementAnalysis.changes.length - 1); return <article className="change-card" key={`${change.section}-${index}`} aria-live="polite"><header><span className="change-index">{String(index + 1).padStart(2, "0")}</span><div className="change-title"><small>Sección modificada</small><h3>{change.section || "Contenido"}</h3></div>{improvementAnalysis.changes.length > 1 ? <nav className="change-navigation" aria-label="Navegación entre cambios"><span>{index + 1} / {improvementAnalysis.changes.length}</span><button type="button" onClick={() => setActiveChangeIndex((current) => Math.max(0, current - 1))} disabled={index === 0} aria-label="Ver cambio anterior"><ArrowLeft size={15} /></button><button type="button" onClick={() => setActiveChangeIndex((current) => Math.min(improvementAnalysis.changes.length - 1, current + 1))} disabled={index === improvementAnalysis.changes.length - 1} aria-label="Ver cambio siguiente"><ArrowRight size={15} /></button></nav> : null}</header><div className="change-comparison"><section className="change-before" aria-label="Contenido anterior"><small>Antes</small><p>{change.before || "—"}</p></section><section className="change-after" aria-label="Contenido mejorado"><small>Después</small><p>{change.after || "—"}</p></section></div>{change.reason ? <div className="change-reason"><small>Por qué lo cambiamos</small><p>{change.reason}</p></div> : null}</article>; })()}</div></details> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.matchScore !== null ? <details className="step-explanation match-explanation"><summary><span>Cómo calculamos la coincidencia</span><small>{atsAudit.matchScore}/100</small></summary><div className="match-breakdown"><p><strong>{atsAudit.matched.length}</strong><span>requisitos respaldados</span></p><p><strong>{atsAudit.missing.length}</strong><span>ausentes o sin evidencia</span></p><small>El puntaje es el porcentaje de requisitos detectados en la oferta que aparecen explícitamente, mediante una equivalencia clara o con evidencia suficiente en el CV.</small>{atsAudit.matched.length ? <div><b>Cubiertos</b>{atsAudit.matched.join(" · ")}</div> : null}{atsAudit.missing.length ? <div><b>Por trabajar</b>{atsAudit.missing.join(" · ")}</div> : null}</div></details> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.checks.some((check) => !check.pass) ? <details className="step-explanation findings-details"><summary><span>Ver recomendaciones</span><small>{atsAudit.checks.filter((check) => !check.pass).length}</small></summary><div className="step-findings"><strong>Recomendaciones</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 3).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div></details> : null}
               {workflowStep === 4 && !iterationComplete && activeQuestion ? <div className="agent-questions question-stepper">
