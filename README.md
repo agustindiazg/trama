@@ -1,12 +1,12 @@
 # Trama
 
-Trama transforma un CV en PDF en una versión LaTeX limpia y compatible con sistemas ATS. Puede reconstruir la estructura del documento, proponer mejoras autorizadas por el usuario y comparar el perfil con una oferta laboral.
+Trama transforma un CV en PDF en un documento estructurado, legible y compatible con sistemas ATS. Puede reconstruir la estructura del documento, proponer mejoras autorizadas por el usuario y comparar el perfil con una oferta laboral.
 
 ## Funcionalidades
 
 - Extracción local del texto de archivos PDF.
 - Interpretación visual y estructurada mediante la API de Anthropic.
-- Generación de un CV en LaTeX editable y descarga directa en PDF.
+- Generación de una vista estructurada y descarga directa en PDF con texto seleccionable.
 - Auditoría ATS y comparación de palabras clave con una oferta.
 - Jurado multiagente con reclutador, auditor ATS, cuantificador y estratega de posicionamiento.
 - Veredicto consolidado, resumen profesional en tres líneas y plan de mejora priorizado.

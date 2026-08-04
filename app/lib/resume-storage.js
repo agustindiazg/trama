@@ -47,3 +47,7 @@ export function saveResume(storage, { file, pages, content }) {
   storage.setItem(SAVED_RESUME_STORAGE_KEY, JSON.stringify(resume));
   return resume;
 }
+
+export function deleteSavedResume(storage) {
+  storage.removeItem(SAVED_RESUME_STORAGE_KEY);
+}

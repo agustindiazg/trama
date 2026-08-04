@@ -3,136 +3,45 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  ArrowDown, ArrowRight, Check, Download,
-  FileText, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Upload, X
+  ArrowDown, ArrowRight, Check, ChevronDown, ClipboardPaste, Download,
+  FileText, Link2, LockKeyhole, Mail, RotateCcw, Sparkles, Target, Trash2, Upload, X
 } from "lucide-react";
 import { calculateAtsAudit } from "./lib/ats";
-import { getCvSectionTitles } from "./lib/cv-language";
-import { loadSavedResume, saveResume } from "./lib/resume-storage";
-const escapeLatex = (value) => value
-  .replaceAll("\\", "\\textbackslash{}")
-  .replaceAll("&", "\\&").replaceAll("%", "\\%").replaceAll("$", "\\$")
-  .replaceAll("#", "\\#").replaceAll("_", "\\_").replaceAll("{", "\\{")
-  .replaceAll("}", "\\}").replaceAll("~", "\\textasciitilde{}")
-  .replaceAll("^", "\\textasciicircum{}");
-
-const getDiffSummary = (before, after) => {
-  if (!before || !after || before === after) return { changed: 0, lines: [] };
-  const oldLines = before.split("\n").filter((line) => line.trim());
-  const newLines = after.split("\n").filter((line) => line.trim());
-  const lines = newLines.filter((line) => !oldLines.includes(line)).filter((line) => !line.startsWith("\\document") && !line.startsWith("\\usepackage")).slice(0, 8);
-  return { changed: lines.length, lines };
-};
-
-const makeLatex = (rawText) => {
+import { countResumeBullets, createResumeDocument, resumeDocumentToPreview, resumeDocumentToText } from "./lib/resume-document";
+import { deleteSavedResume, loadSavedResume, saveResume } from "./lib/resume-storage";
+const makeRawTextPreview = (rawText) => {
   const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
   const name = lines[0] || "Tu Nombre";
-  const contact = lines.slice(1, 3).join(" · ");
-  const body = lines.slice(contact ? 3 : 1);
+  const contactLine = lines.slice(1, 3).join(" · ");
+  const body = lines.slice(contactLine ? 3 : 1);
   const sectionMatcher = /^(experiencia|experience|educaci[oó]n|education|habilidades|skills|proyectos|projects|perfil|profile|resumen|summary|idiomas|languages)$/i;
-  const output = [];
-  let hasSection = false;
-  const titles = getCvSectionTitles({ summary: rawText });
+  const sections = [];
+  let current = { title: "", lines: [] };
 
   body.forEach((line) => {
     if (sectionMatcher.test(line.replace(/:$/, ""))) {
-      hasSection = true;
-      output.push(`\\section*{${escapeLatex(line.replace(/:$/, ""))}}`);
+      if (current.title || current.lines.length) sections.push(current);
+      current = { title: line.replace(/:$/, ""), lines: [] };
     } else {
-      output.push(`${escapeLatex(line)}\\\\[3pt]`);
+      current.lines.push({ type: /^[•◦▪●‣-]\s+/.test(line) ? "bullet" : "body", text: line });
     }
   });
+  if (current.title || current.lines.length) sections.push(current);
 
-  if (!hasSection && output.length) output.unshift(`\\section*{${escapeLatex(titles.summary)}}`);
-
-  return `\\documentclass[10pt,a4paper]{article}
-\\usepackage[margin=1.6cm]{geometry}
-\\usepackage[T1]{fontenc}
-\\usepackage[utf8]{inputenc}
-\\usepackage{enumitem}
-\\usepackage[hidelinks]{hyperref}
-\\usepackage{xcolor}
-\\pagestyle{empty}
-\\setlength{\\parindent}{0pt}
-\\definecolor{ink}{HTML}{17231D}
-\\color{ink}
-
-\\begin{document}
-{\\LARGE\\bfseries ${escapeLatex(name)}}\\\\[4pt]
-${escapeLatex(contact)}\\\\[10pt]
-\\hrule
-\\vspace{8pt}
-
-${output.join("\n")}
-
-\\end{document}
-`;
-};
-
-const makeLatexFromCv = (cv) => {
-  const command = (title) => `\\section*{${escapeLatex(title)}}`;
-  const period = (start, end) => [start, end].filter(Boolean).join(" -- ");
-  const blocks = [];
-  const titles = getCvSectionTitles(cv);
-
-  if (cv.summary) blocks.push(`${command(titles.summary)}\n${escapeLatex(cv.summary)}\\\\[5pt]`);
-  if (cv.experience?.length) {
-    blocks.push(command(titles.experience));
-    cv.experience.forEach((item) => {
-      const heading = [item.role, item.company].filter(Boolean).join(" — ");
-      blocks.push(`\\textbf{${escapeLatex(heading)}} \\hfill ${escapeLatex(period(item.start, item.end))}\\\\`);
-      if (item.location) blocks.push(`\\textit{${escapeLatex(item.location)}}\\\\[2pt]`);
-      if (item.bullets?.length) {
-        blocks.push("\\begin{itemize}[leftmargin=*,nosep]");
-        item.bullets.filter(Boolean).forEach((bullet) => blocks.push(`  \\item ${escapeLatex(bullet)}`));
-        blocks.push("\\end{itemize}\n\\vspace{4pt}");
-      }
-    });
-  }
-  if (cv.education?.length) {
-    blocks.push(command(titles.education));
-    cv.education.forEach((item) => {
-      blocks.push(`\\textbf{${escapeLatex(item.institution || "")}} \\hfill ${escapeLatex(period(item.start, item.end))}\\\\`);
-      if (item.degree) blocks.push(`${escapeLatex(item.degree)}\\\\[4pt]`);
-    });
-  }
-  if (cv.projects?.length) {
-    blocks.push(command(titles.projects));
-    cv.projects.forEach((item) => blocks.push(`\\textbf{${escapeLatex(item.name || "")}}${item.url ? ` — \\href{${escapeLatex(item.url)}}{enlace}` : ""}\\\\\n${escapeLatex(item.description || "")}\\\\[4pt]`));
-  }
-  if (cv.skills?.length) blocks.push(`${command(titles.skills)}\n${escapeLatex(cv.skills.filter(Boolean).join(" · "))}\\\\[5pt]`);
-  if (cv.languages?.length) blocks.push(`${command(titles.languages)}\n${escapeLatex(cv.languages.filter(Boolean).join(" · "))}\\\\[5pt]`);
-  cv.otherSections?.forEach((section) => {
-    if (section.title && section.items?.length) blocks.push(`${command(section.title)}\n${section.items.map((item) => `${escapeLatex(item)}\\\\[3pt]`).join("\n")}`);
-  });
-
-  return `\\documentclass[10pt,a4paper]{article}
-\\usepackage[margin=1.6cm]{geometry}
-\\usepackage[T1]{fontenc}
-\\usepackage[utf8]{inputenc}
-\\usepackage{enumitem}
-\\usepackage[hidelinks]{hyperref}
-\\usepackage{xcolor}
-\\pagestyle{empty}
-\\setlength{\\parindent}{0pt}
-\\definecolor{ink}{HTML}{17231D}
-\\color{ink}
-
-\\begin{document}
-{\\LARGE\\bfseries ${escapeLatex(cv.name || "Tu Nombre")}}\\\\[3pt]
-${cv.headline ? `${escapeLatex(cv.headline)}\\\\[3pt]\n` : ""}${escapeLatex((cv.contact || []).filter(Boolean).join(" · "))}\\\\[9pt]
-\\hrule
-\\vspace{8pt}
-
-${blocks.join("\n")}
-
-\\end{document}
-`;
+  return { name, headline: "", contactLine, contact: contactLine, headerLines: contactLine ? [contactLine] : [], sections };
 };
 
 const SETTINGS_STORAGE_KEY = "trama:conversion-settings";
-const VERSION_STORAGE_KEY = "trama:cv-versions";
 const savedResumeDateFormatter = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" });
+
+const isValidJobUrl = (value) => {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 async function extractPdfText(file) {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -185,6 +94,7 @@ function withViewTransition(update, direction) {
 
 function App() {
   const inputRef = useRef(null);
+  const deleteDialogRef = useRef(null);
   const flowIdRef = useRef(0);
   const [phase, setPhase] = useState("upload");
   const [dragging, setDragging] = useState(false);
@@ -192,15 +102,16 @@ function App() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [pages, setPages] = useState(0);
-  const [latex, setLatex] = useState("");
-  const [originalLatex, setOriginalLatex] = useState("");
+  const [fallbackText, setFallbackText] = useState("");
   const [pdfStatus, setPdfStatus] = useState("idle");
   const [pdfError, setPdfError] = useState("");
   const allowImprovement = true;
   const [targetRole, setTargetRole] = useState("");
+  const [resumeGoal, setResumeGoal] = useState(null);
   const [jobInputMode, setJobInputMode] = useState("url");
   const [jobDescription, setJobDescription] = useState("");
   const [jobUrl, setJobUrl] = useState("");
+  const [pasteStatus, setPasteStatus] = useState("idle");
   const [additionalInformation, setAdditionalInformation] = useState("");
   const [jobKeywords, setJobKeywords] = useState([]);
   const [evaluation, setEvaluation] = useState(null);
@@ -208,7 +119,6 @@ function App() {
   const [workingCv, setWorkingCv] = useState(null);
   const [queuedContext, setQueuedContext] = useState(null);
   const [jobAnalysis, setJobAnalysis] = useState({ requested: false, sourceRead: false, sourceType: null });
-  const [versions, setVersions] = useState([]);
   const [feedback, setFeedback] = useState(null);
   const [feedbackNote, setFeedbackNote] = useState("");
   const [workflowStep, setWorkflowStep] = useState(3);
@@ -225,11 +135,19 @@ function App() {
   const [savedResume, setSavedResume] = useState(null);
   const [savedResumeHydrated, setSavedResumeHydrated] = useState(false);
   const [improvementSkipped, setImprovementSkipped] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setSavedResume(loadSavedResume(window.localStorage));
     setSavedResumeHydrated(true);
   }, []);
+
+  useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (!dialog) return;
+    if (deleteDialogOpen && !dialog.open) dialog.showModal();
+    if (!deleteDialogOpen && dialog.open) dialog.close();
+  }, [deleteDialogOpen]);
 
   useEffect(() => {
     try {
@@ -253,15 +171,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(VERSION_STORAGE_KEY);
-      if (saved) setVersions(JSON.parse(saved).slice(0, 5));
-    } catch {
-      setVersions([]);
-    }
-  }, []);
-
-  useEffect(() => {
     if (!settingsHydrated) return;
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
       allowImprovement,
@@ -279,14 +188,12 @@ function App() {
       size: savedResume.sourceFileSize,
       type: "application/pdf"
     };
-    const generatedLatex = makeLatexFromCv(savedResume.content);
     withViewTransition(() => {
       setFile(savedFile);
       setPages(savedResume.pages);
       setOriginalCv(savedResume.content);
       setWorkingCv(savedResume.content);
-      setOriginalLatex(generatedLatex);
-      setLatex(generatedLatex);
+      setFallbackText("");
       setJobKeywords(Array.isArray(savedResume.content.jobKeywords) ? savedResume.content.jobKeywords : []);
       setEvaluation(null);
       setError("");
@@ -303,6 +210,19 @@ function App() {
   const useSavedResume = useCallback(() => openSavedResume("context"), [openSavedResume]);
   const previewSavedResume = useCallback(() => openSavedResume("overview"), [openSavedResume]);
 
+  const removeSavedResume = useCallback(() => {
+    try {
+      deleteSavedResume(window.localStorage);
+      setSavedResume(null);
+      setDeleteDialogOpen(false);
+      setError("");
+      if (inputRef.current) inputRef.current.value = "";
+    } catch {
+      setError("No pudimos borrar el CV guardado. Revisá los permisos del navegador e intentá nuevamente.");
+      setDeleteDialogOpen(false);
+    }
+  }, []);
+
   const resetFlow = useCallback(() => {
     flowIdRef.current += 1;
     withViewTransition(() => {
@@ -312,14 +232,15 @@ function App() {
       setStatus("idle");
       setError("");
       setPages(0);
-      setLatex("");
-      setOriginalLatex("");
+      setFallbackText("");
       setPdfStatus("idle");
       setPdfError("");
       setTargetRole("");
+      setResumeGoal(null);
       setJobInputMode("url");
       setJobDescription("");
       setJobUrl("");
+      setPasteStatus("idle");
       setAdditionalInformation("");
       setJobKeywords([]);
       setEvaluation(null);
@@ -359,6 +280,7 @@ function App() {
       setError("");
       setFile(candidate);
       setPhase("context");
+      setResumeGoal(null);
       setOriginalCv(null);
       setWorkingCv(null);
       setQueuedContext(null);
@@ -389,15 +311,11 @@ function App() {
       const [result, aiResponse] = await Promise.all([localPromise, aiPromise]);
       if (flowId !== flowIdRef.current) return;
       setPages(result.pages);
-      let generatedLatex = "";
-
       if (aiResponse.ok) {
         const data = await aiResponse.json();
         setOriginalCv(data.cv);
         setWorkingCv(data.cv);
-        generatedLatex = makeLatexFromCv(data.cv);
-        setLatex(generatedLatex);
-        setOriginalLatex(result.text ? makeLatex(result.text) : "");
+        setFallbackText("");
         setJobKeywords(Array.isArray(data.cv?.jobKeywords) ? data.cv.jobKeywords : []);
         setEvaluation(null);
         setJobAnalysis(data.jobAnalysis || { requested: Boolean(jobDescription.trim() || jobUrl.trim()), sourceRead: Boolean(data.jobSource), sourceType: null });
@@ -409,9 +327,7 @@ function App() {
           throw invalidCvError;
         }
         if (!result.text.trim()) throw new Error(apiError.error || "Este PDF no contiene texto seleccionable y Claude no está disponible.");
-        generatedLatex = makeLatex(result.text);
-        setLatex(generatedLatex);
-        setOriginalLatex(generatedLatex);
+        setFallbackText(result.text);
         withViewTransition(() => {
           if (apiError.code !== "CLAUDE_NOT_CONFIGURED") setError(`Claude no estuvo disponible; usamos el extractor local. ${apiError.error || ""}`.trim());
           setStatus("ready");
@@ -456,7 +372,6 @@ function App() {
       if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos mejorar el CV.");
       const improvedCv = data.cv;
-      const generatedLatex = makeLatexFromCv(improvedCv);
       let persistedResume = null;
       try {
         persistedResume = saveResume(window.localStorage, { file, pages, content: improvedCv });
@@ -470,7 +385,7 @@ function App() {
         setQuestionQuickAnswers({});
         setJobAnalysis(data.jobAnalysis || { requested: false, sourceRead: false, sourceType: null });
         setWorkingCv(improvedCv);
-        setLatex(generatedLatex);
+        setFallbackText("");
         setJobKeywords(Array.isArray(improvedCv.jobKeywords) ? improvedCv.jobKeywords : []);
         setStatus("ready");
         setPhase("result");
@@ -478,12 +393,6 @@ function App() {
         setIterationComplete(false);
         setQueuedContext(null);
         setPreviewOpen(true);
-        const nextVersion = { id: Date.now(), file: file.name, role: context.targetRole.trim(), mode: "Optimizado", latex: generatedLatex, createdAt: new Date().toISOString() };
-        setVersions((current) => {
-          const updated = [nextVersion, ...current].slice(0, 5);
-          window.localStorage.setItem(VERSION_STORAGE_KEY, JSON.stringify(updated));
-          return updated;
-        });
       }, "step");
     } catch (err) {
       if (flowId !== flowIdRef.current) return;
@@ -492,13 +401,13 @@ function App() {
         setPhase("context");
         setQueuedContext(null);
         if (context.mode === "url" && context.jobUrl.trim()) setJobInputMode("manual");
+        if (context.mode === "general") setResumeGoal(null);
         setError(err.message || "No pudimos preparar la mejora.");
       }, "step");
     }
   }, [file]);
 
   const finishWithoutImprovement = useCallback((cv) => {
-    const unchangedLatex = makeLatexFromCv(cv);
     let persistedResume = null;
     try {
       persistedResume = saveResume(window.localStorage, { file, pages, content: cv });
@@ -508,8 +417,7 @@ function App() {
     withViewTransition(() => {
       if (persistedResume) setSavedResume(persistedResume);
       setWorkingCv(cv);
-      setOriginalLatex(unchangedLatex);
-      setLatex(unchangedLatex);
+      setFallbackText("");
       setImprovementAnalysis({ changes: [], questions: [] });
       setJobKeywords(Array.isArray(cv.jobKeywords) ? cv.jobKeywords : []);
       setJobAnalysis({ requested: false, sourceRead: false, sourceType: null });
@@ -532,15 +440,22 @@ function App() {
     runImprovement(originalCv, queuedContext);
   }, [finishWithoutImprovement, originalCv, queuedContext, runImprovement, status]);
 
-  const continueWithContext = (event, skipObjective = false) => {
+  const continueWithContext = (event, improveGenerally = false) => {
     event.preventDefault();
-    const hasObjective = !skipObjective && Boolean(
+    const hasValidObjective = jobInputMode === "url"
+      ? isValidJobUrl(jobUrl)
+      : Boolean(targetRole.trim());
+    if (!improveGenerally && !hasValidObjective) {
+      setError(jobInputMode === "url" ? "Pegá un link válido para personalizar tu CV." : "Ingresá el puesto objetivo para personalizar tu CV.");
+      return;
+    }
+    const hasObjective = !improveGenerally && Boolean(
       jobInputMode === "url" ? jobUrl.trim() : targetRole.trim()
     );
-    const context = skipObjective ? {
+    const context = improveGenerally ? {
       mode: "general",
       hasObjective: false,
-      skipImprovement: true,
+      skipImprovement: false,
       jobUrl: "",
       targetRole: "",
       additionalInformation: "",
@@ -586,7 +501,6 @@ function App() {
       const data = await response.json();
       if (flowId !== flowIdRef.current) return;
       if (!response.ok) throw new Error(data.error || "No pudimos aplicar el feedback.");
-      const generatedLatex = makeLatexFromCv(data.cv);
       let persistedResume = null;
       try {
         persistedResume = saveResume(window.localStorage, { file, pages, content: data.cv });
@@ -596,7 +510,7 @@ function App() {
       withViewTransition(() => {
         if (persistedResume) setSavedResume(persistedResume);
         setWorkingCv(data.cv);
-        setLatex(generatedLatex);
+        setFallbackText("");
         setJobKeywords(Array.isArray(data.cv.jobKeywords) ? data.cv.jobKeywords : []);
         setImprovementAnalysis(data.analysis || { changes: [], questions: [] });
         setQuestionAnswers({});
@@ -623,56 +537,26 @@ function App() {
     processFile(event.dataTransfer.files?.[0]);
   };
 
-  const atsAudit = useMemo(() => status === "ready" ? calculateAtsAudit(latex, jobKeywords) : { technicalScore: 0, matchScore: null, checks: [], keywordCheck: null, inferred: [] }, [status, latex, jobKeywords]);
+  const atsAudit = useMemo(() => {
+    if (status !== "ready") return { technicalScore: 0, matchScore: null, checks: [], keywordCheck: null, inferred: [] };
+    if (!workingCv) return calculateAtsAudit(fallbackText, jobKeywords);
+    const resumeDocument = createResumeDocument(workingCv);
+    return calculateAtsAudit(resumeDocumentToText(resumeDocument), jobKeywords, {
+      bulletCount: countResumeBullets(resumeDocument),
+      simpleLayout: true
+    });
+  }, [status, fallbackText, jobKeywords, workingCv]);
   const perfectMatch = atsAudit.technicalScore === 100 && atsAudit.matchScore === 100;
   const keywordLabels = useMemo(() => jobKeywords.map((item) => typeof item === "object" && item ? item.term : item).filter(Boolean), [jobKeywords]);
-  const diffSummary = useMemo(() => getDiffSummary(originalLatex, latex), [originalLatex, latex]);
   const iterationSteps = [...improvementAnalysis.questions, { id: "freeform", question: "¿Hay algo más que quieras agregar o cambiar?", why: "Podés sumar información verdadera que no hayamos preguntado o pedir un ajuste de redacción.", freeform: true }];
   const activeQuestion = iterationSteps[activeQuestionIndex] || iterationSteps[iterationSteps.length - 1];
   const activeQuickAnswers = activeQuestion?.freeform || !Array.isArray(activeQuestion?.quickAnswers) || activeQuestion.quickAnswers.length < 2
     ? ["Sí", "No"]
     : activeQuestion.quickAnswers.slice(0, 4);
   const preview = useMemo(() => {
-    const name = latex.match(/\\LARGE\\bfseries\s+([^}]*)}/)?.[1] || "Tu Nombre";
-    const headerBlock = latex.match(/\\LARGE\\bfseries[^]*?}\\\\\[\d+pt\]\s*([^]*?)\\hrule/)?.[1] || "";
-    const headerLines = headerBlock.split("\n")
-      .map((line) => line.trim().replace(/\\\\(?:\[\d+pt\])?$/, ""))
-      .filter(Boolean);
-    const content = latex.split("\\vspace{8pt}")[1]?.split("\\end{document}")[0] || "";
-    const sections = [];
-    let current = { title: "", lines: [] };
-
-    content.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
-      const section = line.match(/^\\section\*\{(.*)}$/);
-      if (section) {
-        if (current.title || current.lines.length) sections.push(current);
-        current = { title: section[1], lines: [] };
-      } else if (!/^\\(?:begin|end|vspace)/.test(line)) {
-        const type = /^\\item\s+/.test(line) ? "bullet" : /\\textbf\{/.test(line) ? "heading" : /\\textit\{/.test(line) ? "subheading" : "body";
-        const readable = line
-          .replace(/^\\item\s+/, "• ")
-          .replace(/\\textbf\{([^}]*)}/g, "$1")
-          .replace(/\\textit\{([^}]*)}/g, "$1")
-          .replace(/\\href\{[^}]*}\{([^}]*)}/g, "$1")
-          .replace(/\s*\\hfill\s*/, "  ·  ")
-          .replace(/\\\\(?:\[\d+pt])?$/, "");
-        if (readable) current.lines.push({ text: readable, type });
-      }
-    });
-    if (current.title || current.lines.length) sections.push(current);
-
-    const clean = (value) => value
-      .replaceAll("\\&", "&").replaceAll("\\%", "%").replaceAll("\\$", "$")
-      .replaceAll("\\#", "#").replaceAll("\\_", "_").replaceAll("\\{", "{")
-      .replaceAll("\\}", "}").replaceAll("\\textasciitilde{}", "~")
-      .replaceAll("\\textasciicircum{}", "^").replaceAll("\\textbackslash{}", "\\");
-    return {
-      name: clean(name),
-      headerLines: headerLines.map(clean),
-      contact: headerLines.map(clean).join(" · "),
-      sections: sections.map((s) => ({ ...s, title: clean(s.title), lines: s.lines.map((line) => ({ ...line, text: clean(line.text) })) }))
-    };
-  }, [latex]);
+    if (workingCv) return resumeDocumentToPreview(createResumeDocument(workingCv));
+    return makeRawTextPreview(fallbackText);
+  }, [fallbackText, workingCv]);
 
   const downloadPdf = async () => {
     setPdfStatus("generating");
@@ -697,22 +581,22 @@ function App() {
       };
 
       const writeText = (text, { fontSize = 9.2, style = "normal", color = ink, x = margin, width = contentWidth, lineHeight = 4.5 } = {}) => {
+        const safeText = String(text ?? "").trim();
+        if (!safeText) return false;
         document.setFont("helvetica", style);
         document.setFontSize(fontSize);
         document.setTextColor(...color);
-        const wrapped = document.splitTextToSize(text, width);
+        const wrapped = document.splitTextToSize(safeText, width);
+        if (!wrapped.length) return false;
         ensureSpace(wrapped.length * lineHeight);
         document.text(wrapped, x, y);
         y += wrapped.length * lineHeight;
+        return true;
       };
 
-      writeText(preview.name, { fontSize: 23, style: "bold", lineHeight: 8 });
-      preview.headerLines.forEach((line, index) => writeText(line, {
-        fontSize: index === 0 && preview.headerLines.length > 1 ? 9.5 : 8.5,
-        style: index === 0 && preview.headerLines.length > 1 ? "bold" : "normal",
-        color: muted,
-        lineHeight: 4.6
-      }));
+      writeText(preview.name, { fontSize: 20, style: "bold", lineHeight: 7.4 });
+      if (preview.headline) writeText(preview.headline, { fontSize: 12, style: "bold", color: accent, lineHeight: 5.4 });
+      if (preview.contactLine) writeText(preview.contactLine, { fontSize: 8.5, color: muted, lineHeight: 4.6 });
       y += 2;
       document.setDrawColor(...accent);
       document.setLineWidth(0.45);
@@ -729,14 +613,20 @@ function App() {
           y += 3;
         }
         section.lines.forEach((line, index) => {
+          const lineText = String(line?.text ?? "").trim();
+          if (!lineText) return;
           if (line.type === "heading") {
             if (index > 0) y += 2.4;
-            const [label, date = ""] = line.text.split(/\s{2}·\s{2}/);
+            const [label, date = ""] = lineText.split(/\s{2}·\s{2}/);
             const dateWidth = date ? Math.min(38, document.getTextWidth(date) + 2) : 0;
             document.setFont("helvetica", "bold");
             document.setFontSize(9.5);
             const wrapped = document.splitTextToSize(label, contentWidth - dateWidth - 3);
-            ensureSpace(Math.max(5, wrapped.length * 4.5));
+            const nextLine = section.lines[index + 1];
+            const nextText = nextLine?.text?.replace(/^•\s*/, "") || "";
+            const nextWidth = nextLine?.type === "bullet" ? contentWidth - 5 : contentWidth;
+            const nextHeight = nextText ? Math.min(2, document.splitTextToSize(nextText, nextWidth).length) * 4.5 : 0;
+            ensureSpace(Math.max(5, wrapped.length * 4.5) + nextHeight);
             document.setTextColor(...ink);
             document.text(wrapped, margin, y);
             if (date) {
@@ -749,7 +639,7 @@ function App() {
           } else if (line.type === "bullet") {
             document.setFont("helvetica", "normal");
             document.setFontSize(9.1);
-            const bulletText = line.text.replace(/^•\s*/, "");
+            const bulletText = lineText.replace(/^•\s*/, "");
             const wrapped = document.splitTextToSize(bulletText, contentWidth - 5);
             ensureSpace(wrapped.length * 4.35);
             document.setFillColor(...accent);
@@ -758,7 +648,16 @@ function App() {
             document.text(wrapped, margin + 4, y);
             y += wrapped.length * 4.35 + 0.55;
           } else {
-            writeText(line.text, {
+            if (line.link && /^https?:\/\//i.test(line.link) && document.splitTextToSize(lineText, contentWidth).length === 1) {
+              ensureSpace(4.5);
+              document.setFont("helvetica", "italic");
+              document.setFontSize(8.8);
+              document.setTextColor(...muted);
+              document.textWithLink(lineText, margin, y, { url: line.link });
+              y += 5.3;
+              return;
+            }
+            writeText(lineText, {
               fontSize: line.type === "subheading" ? 8.8 : 9.2,
               style: line.type === "subheading" ? "italic" : "normal",
               color: line.type === "subheading" ? muted : ink,
@@ -777,7 +676,8 @@ function App() {
       });
       document.save(`${file?.name.replace(/\.pdf$/i, "") || "cv"}-ats.pdf`);
       setPdfStatus("idle");
-    } catch {
+    } catch (error) {
+      console.error("No se pudo generar el PDF", error);
       setPdfStatus("error");
       setPdfError("No pudimos generar el PDF. Intentá nuevamente en unos segundos.");
     }
@@ -833,9 +733,38 @@ function App() {
   };
 
   const inFlow = phase !== "upload";
+  const canPersonalize = jobInputMode === "url" ? isValidJobUrl(jobUrl) : Boolean(targetRole.trim());
+  const pasteJobUrl = async () => {
+    if (!navigator.clipboard?.readText) {
+      setError("Tu navegador no permite pegar automáticamente. Podés usar Ctrl+V o ⌘V en el campo.");
+      return;
+    }
+
+    setPasteStatus("reading");
+    setError("");
+    try {
+      const clipboardText = (await navigator.clipboard.readText()).trim();
+      if (!clipboardText) {
+        setPasteStatus("idle");
+        setError("No hay ningún link en el portapapeles.");
+        return;
+      }
+      if (!isValidJobUrl(clipboardText)) {
+        setPasteStatus("idle");
+        setError("El contenido del portapapeles no es un link válido.");
+        return;
+      }
+      setJobUrl(clipboardText.slice(0, 500));
+      setPasteStatus("pasted");
+    } catch {
+      setPasteStatus("idle");
+      setError("No pudimos acceder al portapapeles. Podés usar Ctrl+V o ⌘V en el campo.");
+    }
+  };
   const togglePreview = () => withViewTransition(() => setPreviewOpen((open) => !open), "drawer");
   const personalizeResume = () => withViewTransition(() => {
     setPhase("context");
+    setResumeGoal("personalize");
     setStatus("context-ready");
     setPreviewOpen(false);
     setError("");
@@ -850,7 +779,10 @@ function App() {
       <nav className="nav">
         <a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a>
         <div className="nav-actions">
-          {inFlow ? <button type="button" className="restart-flow" onClick={resetFlow}><RotateCcw size={14} /> Empezar de nuevo</button> : null}
+          {phase === "result" && status === "ready" ? <>
+            <a className="nav-preview mobile-only" href="#preview-document"><FileText size={14} /> Revisar preview</a>
+            <button type="button" className="nav-preview desktop-only" aria-expanded={previewOpen} onClick={togglePreview}><FileText size={14} /> {previewOpen ? "Ocultar preview" : "Revisar preview"}</button>
+          </> : null}
           {!inFlow ? <a className="nav-link" href="#como-funciona">Cómo funciona <ArrowDown size={15} /></a> : null}
         </div>
       </nav>
@@ -859,35 +791,26 @@ function App() {
         {!inFlow ? <>
           <div className="eyebrow"><Sparkles size={14} /> TU CV, PREPARADO PARA ESA OPORTUNIDAD</div>
           <h1>Un CV que conecta<br />tu experiencia con <em>el puesto.</em></h1>
-          <p className="hero-copy">Subí tu CV y compartí la oferta. Trama identifica qué busca la empresa, mejora cómo contás tu experiencia y te muestra qué falta reforzar — sin inventar nada.</p>
-
-          <div className="hero-outcomes" aria-label="Qué obtenés con Trama">
-            <span><Check size={14} /> CV adaptado a la oferta</span>
-            <span><Check size={14} /> Puntaje ATS y coincidencia</span>
-            <span><Check size={14} /> PDF listo para postularte</span>
-          </div>
-
-          <aside className="ats-explainer">
-            <span>¿Qué es un ATS?</span>
-            <p>Es el sistema que muchas empresas usan para recibir, ordenar y filtrar currículums antes de que lleguen a un reclutador.</p>
-          </aside>
+          <p className="hero-copy">{savedResume ? "Tu CV está guardado y listo para una nueva búsqueda." : "Subí tu CV. Trama lo adapta a la oportunidad sin inventar experiencia."}</p>
         </> : null}
 
         {phase === "upload" ? (savedResumeHydrated ? savedResume ? (
           <section className="saved-resume" aria-labelledby="saved-resume-title">
+            <button type="button" className="delete-saved-resume" onClick={() => setDeleteDialogOpen(true)} aria-label="Borrar CV guardado" title="Borrar CV guardado"><X size={18} /></button>
             <div className="saved-resume-icon"><FileText size={28} strokeWidth={1.6} /><span><Check size={12} /></span></div>
             <span className="kicker">CV GUARDADO EN ESTE DISPOSITIVO</span>
-            <h2 id="saved-resume-title">Seguí trabajando sobre tu CV.</h2>
+            <h2 id="saved-resume-title">Prepará tu CV para tu próxima oportunidad.</h2>
             <div className="saved-resume-file">
               <div><strong>{savedResume.sourceFileName}</strong><small>{savedResume.pages ? `${savedResume.pages} ${savedResume.pages === 1 ? "página" : "páginas"} · ` : ""}Actualizado el {savedResumeDateFormatter.format(new Date(savedResume.updatedAt))}</small></div>
             </div>
-            <div className="saved-resume-actions">
-              <button type="button" className="continue-saved" onClick={useSavedResume}><Target size={15} /> Personalizar para una propuesta <ArrowRight size={16} /></button>
-              <button type="button" className="preview-saved" onClick={previewSavedResume}><FileText size={15} /> Revisar CV actual</button>
-              <button type="button" className="replace-saved" onClick={() => inputRef.current?.click()}><Upload size={15} /> Reemplazar PDF</button>
+            <div className="saved-resume-actions action-hierarchy">
+              <button type="button" className="replace-saved tertiary-action" onClick={() => inputRef.current?.click()}><Upload size={15} /> Reemplazar archivo</button>
+              <div className="saved-resume-primary-actions">
+                <button type="button" className="preview-saved" onClick={previewSavedResume}><FileText size={15} /> Revisar CV</button>
+                <button type="button" className="continue-saved" onClick={useSavedResume}><Target size={15} /> Personalizar CV <ArrowRight size={16} /></button>
+              </div>
             </div>
             <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
-            <small className="saved-resume-note">El nuevo PDF reemplazará este CV solo cuando termine de procesarse correctamente.</small>
           </section>
         ) : (
           <div
@@ -902,7 +825,7 @@ function App() {
           >
             <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => processFile(e.target.files?.[0])} />
             <div className="file-icon"><FileText size={31} strokeWidth={1.6} /><span>PDF</span></div>
-            <h2>Empezá por tu CV actual</h2><p>Después podés sumar la oferta o contarnos qué puesto buscás</p><button type="button"><Upload size={17} /> Analizar mi CV</button><small>PDF de hasta 10 MB · Vas a revisar cada mejora antes de descargar</small>
+            <h2>Empezá por tu CV actual</h2><p>Después podés adaptarlo a una oportunidad.</p><button type="button"><Upload size={17} /> Subir mi CV</button><small>PDF · Máximo 10 MB</small>
           </div>
         ) : null) : phase === "overview" ? (
           <section className="context-step resume-overview" aria-labelledby="resume-overview-title">
@@ -926,59 +849,76 @@ function App() {
           </section>
         ) : phase === "context" ? (
           <form className="context-step" onSubmit={continueWithContext}>
-            <div className="flow-progress" aria-label="Progreso">
-              <span className="done"><Check size={13} /> CV</span><i /><span className="active">02 Objetivo</span><i /><span>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span>
-            </div>
-            <div className="analysis-status" aria-live="polite">
-              <span className={status === "reading" ? "status-pulse" : "status-check"}>{status === "reading" ? null : <Check size={13} />}</span>
-              <div><strong>{status === "reading" ? "Estamos analizando tu CV en segundo plano" : "Tu CV ya está listo para comparar"}</strong><small>{file?.name} · podés completar el objetivo mientras avanzamos</small></div>
-            </div>
-            <div className="context-heading"><span className="kicker">PASO 02 · OBJETIVO</span><h2>¿Para qué oportunidad querés preparar tu CV?</h2><p>Elegí una oferta pública o contanos manualmente qué estás buscando.</p></div>
-            <fieldset className="job-source">
-              <legend><FileText size={14} /> Contexto de la búsqueda</legend>
-              <div className="job-tabs" role="tablist" aria-label="Cómo agregar la oferta">
-                <button type="button" role="tab" aria-selected={jobInputMode === "url"} className={jobInputMode === "url" ? "active" : ""} onClick={() => { setJobInputMode("url"); setError(""); }}>Tengo una oferta <span>Más rápido</span></button>
-                <button type="button" role="tab" aria-selected={jobInputMode === "manual"} className={jobInputMode === "manual" ? "active" : ""} onClick={() => { setJobInputMode("manual"); setError(""); }}>Definir mi objetivo</button>
+            <div className="flow-progress compact-progress" aria-label="Paso 2 de 5: objetivo"><strong>Paso 2 de 5 · Objetivo</strong></div>
+            {resumeGoal !== "personalize" ? <>
+              <div className="context-heading choice-heading"><span className="kicker">ELEGÍ EL ENFOQUE</span><h2>¿Qué querés hacer con tu CV?</h2><p>Podés adaptarlo a una búsqueda concreta o mejorarlo sin enfocarlo en una oferta.</p></div>
+              <div className="goal-choices" role="group" aria-label="Elegí cómo mejorar tu CV">
+                <button type="button" className="goal-choice recommended" onClick={() => { setResumeGoal("personalize"); setError(""); }}>
+                  <span className="goal-choice-icon"><Target size={21} /></span>
+                  <span><small>RECOMENDADO</small><strong>Personalizarlo para una oferta</strong><em>Adaptamos tu experiencia y palabras clave al puesto que buscás.</em></span>
+                  <ArrowRight size={18} />
+                </button>
+                <button type="button" className="goal-choice" onClick={(event) => { setResumeGoal("general"); continueWithContext(event, true); }}>
+                  <span className="goal-choice-icon"><Sparkles size={21} /></span>
+                  <span><small>MEJORA GENERAL</small><strong>Mejorar mi CV</strong><em>Optimizamos claridad, redacción, estructura e impacto profesional.</em></span>
+                  <ArrowRight size={18} />
+                </button>
               </div>
-              <div className="job-tab-panel" role="tabpanel">
+            </> : <>
+            <div className="context-heading"><span className="kicker">PERSONALIZACIÓN</span><h2>Personalizá tu CV para esta oportunidad.</h2><p>{jobInputMode === "url" ? "Pegá el link de la oferta." : "Contanos qué tipo de oportunidad estás buscando."}</p></div>
+            <fieldset className="job-source">
+              <legend className="sr-only">Cómo agregar el objetivo</legend>
+              <div className="job-tab-panel">
                 {jobInputMode === "url" ? (
-                  <label><span className="sr-only">URL pública de la oferta</span><input type="url" value={jobUrl} onChange={(event) => setJobUrl(event.target.value)} placeholder="https://empresa.com/jobs/product-designer" maxLength={500} /><small>Debe ser una página pública. Si el sitio bloquea la lectura, te pediremos completar el objetivo manualmente.</small></label>
+                  <div className="job-url-field">
+                    <span className="job-url-heading"><i><Link2 size={18} /></i><b><small>OFERTA · LINK</small>Link de la oferta</b></span>
+                    <span className="job-url-copy">Vamos a leer el puesto y sus requisitos para adaptar tu experiencia.</span>
+                    <label className="sr-only" htmlFor="job-url">Link de la oferta</label>
+                    <span className="job-url-input">
+                      <Link2 size={16} aria-hidden="true" />
+                      <input id="job-url" type="url" name="job-url" value={jobUrl} onChange={(event) => { setJobUrl(event.target.value); setPasteStatus("idle"); setError(""); }} placeholder="https://empresa.com/jobs/product-designer" maxLength={500} required />
+                      <button type="button" className={`paste-url-button ${pasteStatus === "pasted" ? "pasted" : ""}`} onClick={pasteJobUrl} disabled={pasteStatus === "reading"} aria-label="Pegar link desde el portapapeles">
+                        {pasteStatus === "pasted" ? <Check size={14} /> : <ClipboardPaste size={14} />}
+                        {pasteStatus === "reading" ? "Pegando…" : pasteStatus === "pasted" ? "Pegado" : "Pegar"}
+                      </button>
+                    </span>
+                  </div>
                 ) : (
-                  <div className="manual-objective">
-                    <label><span><Target size={13} /> Puesto objetivo</span><input value={targetRole} onChange={(event) => setTargetRole(event.target.value)} placeholder="Ej. Senior Product Designer" maxLength={120} /></label>
-                    <label><span><Sparkles size={13} /> Información verdadera que no figura en el PDF</span><textarea value={additionalInformation} onChange={(event) => setAdditionalInformation(event.target.value)} placeholder="Ej. Lideré un equipo de 6 personas o mejoramos la conversión un 18%." maxLength={4000} rows={4} /><small>Usaremos únicamente la información que confirmes como verdadera.</small></label>
+                  <div className="job-manual-field">
+                    <span className="job-url-heading"><i><Target size={18} /></i><b><small>OFERTA · MANUAL</small>Contanos tu objetivo</b></span>
+                    <span className="job-url-copy">Usaremos el puesto y la información que compartas para adaptar tu experiencia.</span>
+                    <div className="manual-objective">
+                      <label><span><Target size={13} /> Puesto objetivo</span><input name="target-role" value={targetRole} onChange={(event) => { setTargetRole(event.target.value); setError(""); }} placeholder="Ej. Senior Product Designer" maxLength={120} required /></label>
+                      <label><span><Sparkles size={13} /> Información verdadera que no figura en el PDF</span><textarea value={additionalInformation} onChange={(event) => setAdditionalInformation(event.target.value)} placeholder="Ej. Lideré un equipo de 6 personas o mejoramos la conversión un 18%." maxLength={4000} rows={4} /><small>Usaremos únicamente la información que confirmes como verdadera.</small></label>
+                    </div>
                   </div>
                 )}
               </div>
+              <button type="button" className="objective-mode-link" onClick={() => { setJobInputMode((mode) => mode === "url" ? "manual" : "url"); setError(""); }}>{jobInputMode === "url" ? "No tengo el link o no funciona" : "Tengo el link de la oferta"}</button>
             </fieldset>
-            <div className="improvement-guarantee"><Check size={15} /><span><strong>La primera mejora está incluida</strong><small>Reescribimos y priorizamos sin inventar experiencia ni métricas.</small></span></div>
+            </>}
             <div className="context-actions">
-              <button type="button" className="back-button" onClick={resetFlow}>Cambiar PDF</button>
-              <div className="context-primary-actions">
-                <button type="button" className="skip-button" disabled={status === "error"} onClick={(event) => continueWithContext(event, true)}>Saltar este paso</button>
-                <button type="submit" className="continue-button" disabled={status === "error"}>Continuar<ArrowRight size={16} /></button>
-              </div>
+              <button type="button" className="back-button tertiary-action" onClick={resumeGoal === "personalize" ? () => { setResumeGoal(null); setError(""); } : resetFlow}>← Volver</button>
+              {resumeGoal === "personalize" ? <div className="context-primary-actions">
+                <button type="submit" className="continue-button primary-action" disabled={status === "error" || !canPersonalize}>Personalizar CV<ArrowRight size={16} /></button>
+              </div> : null}
             </div>
           </form>
         ) : phase === "waiting" ? (
           <section className="context-step waiting-step" aria-live="polite">
-            <div className="flow-progress" aria-label="Progreso"><span className={originalCv ? "done" : "active"}>{originalCv ? <Check size={13} /> : null} CV</span><i /><span className="done"><Check size={13} /> {queuedContext?.hasObjective ? "Objetivo" : "Sin objetivo"}</span><i /><span className={originalCv ? "active" : ""}>03 CV mejorado</span><i /><span>04 Seguir mejorando</span><i /><span>05 Final</span></div>
+            <div className="flow-progress compact-progress" aria-label="Paso 3 de 5: preparando CV"><strong>Paso 3 de 5 · Preparando CV</strong></div>
             <div className="waiting-orbit">{queuedContext?.skipImprovement ? <FileText size={24} /> : <Sparkles size={24} />}</div>
-            <span className="kicker">{queuedContext?.skipImprovement ? "PASO 05 · PREPARANDO TU CV" : "PASO 03 · PREPARANDO EL RECORRIDO"}</span>
-            <h2>{queuedContext?.skipImprovement ? originalCv ? "Tu CV está listo para revisar." : "Seguimos analizando tu CV." : originalCv ? "Estamos cruzando tu experiencia con el objetivo." : "Seguimos analizando tu CV."}</h2>
-            <p>{queuedContext?.skipImprovement ? originalCv ? "Conservamos el contenido sin cambios y abrimos la versión final." : "En cuanto termine la lectura del PDF, podrás revisarlo y descargarlo sin aplicar mejoras." : originalCv ? "El CV y tu contexto ya están listos. Estamos preparando las mejoras." : "Tu objetivo ya quedó guardado. En cuanto termine la lectura del PDF, continuamos automáticamente."}</p>
+            <h2>{queuedContext?.skipImprovement ? "Estamos preparando tu CV." : "Estamos mejorando tu CV."}</h2>
+            <p>{queuedContext?.mode === "general" ? "Estamos optimizando su claridad, estructura e impacto profesional." : queuedContext?.skipImprovement ? "Enseguida vas a poder revisarlo y descargarlo." : "Lo estamos adaptando al objetivo con la experiencia que compartiste."}</p>
             <div className="waiting-lines"><i /></div>
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
-            <div className="flow-progress" aria-label="Progreso">
-              <span className="done"><Check size={13} /> CV</span><i /><span className="done"><Check size={13} /> {improvementSkipped ? "Sin objetivo" : "Objetivo"}</span><i /><span className={workflowStep > 3 ? "done" : "active"}>{workflowStep > 3 ? <Check size={13} /> : null} 03 {improvementSkipped ? "Omitido" : "CV mejorado"}</span><i /><span className={workflowStep === 4 ? "active" : workflowStep > 4 ? "done" : ""}>04 {improvementSkipped ? "Omitido" : "Seguir mejorando"}</span><i /><span className={workflowStep === 5 ? "active" : ""}>05 Final</span>
-            </div>
+            <div className="flow-progress compact-progress" aria-label={`Paso ${workflowStep} de 5`}><strong>Paso {workflowStep} de 5 · {workflowStep === 3 ? "Revisar versión" : workflowStep === 4 ? "Seguir mejorando" : "Descargar"}</strong></div>
             <div className={`improvement-content ${status === "revising" ? "is-loading" : ""}`}>
               {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
-              <span className="kicker">{workflowStep === 3 ? "PASO 03 · CV MEJORADO" : workflowStep === 4 ? iterationComplete ? perfectMatch ? "PASO 04 · OBJETIVO ALCANZADO" : "PASO 04 · NUEVA ITERACIÓN" : "PASO 04 · SEGUIR MEJORANDO" : "PASO 05 · CONFIRMACIÓN FINAL"}</span>
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
-              <p>{workflowStep === 3 ? "Esta versión ya incorpora la mejora inicial. Revisá el resultado y decidí si está lista o si querés seguir iterando." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "El CV supera todos los controles ATS y respalda todos los requisitos detectados en la oferta." : "Revisá cómo cambió el resultado. Podés seguir iterando o confirmar que esta versión está lista." : "Trabajá sobre el feedback de los agentes o pedí un ajuste propio sin salir de este paso." : improvementSkipped ? "Saltaste el objetivo, así que no aplicamos ninguna mejora. Podés revisar el preview y descargar nuevamente el PDF." : "Descargá el PDF listo para usar. Si querés comprobarlo antes o todavía necesitás cambiar algo, podés revisar el preview o volver al paso anterior."}</p>
+              <p>{workflowStep === 3 ? "Revisá el resultado y elegí si está listo." : workflowStep === 4 ? iterationComplete ? "Revisá el resultado o hacé otra iteración." : "Respondé solo lo que puedas confirmar." : improvementSkipped ? "No aplicamos cambios al contenido." : "Descargá la versión lista para postularte."}</p>
               {workflowStep === 5 && jobAnalysis.sourceType === "url" && jobUrl.trim() ? <section className={`cover-letter ${coverLetter ? "has-letter" : ""}`} aria-labelledby="cover-letter-title">
                 <div className="cover-letter-intro">
                   <span><Mail size={18} /></span>
@@ -996,35 +936,33 @@ function App() {
               {workflowStep === 3 || workflowStep === 4 && iterationComplete ? <div className={`step-results ${atsAudit.matchScore === null ? "without-match" : ""}`}>
                 <article><span>Lectura ATS</span><strong>{atsAudit.technicalScore}<small>/100</small></strong><p>{atsAudit.checks.filter((check) => check.pass).length} de {atsAudit.checks.length} controles superados</p></article>
                 {atsAudit.matchScore !== null ? <article><span>Coincidencia</span><strong>{atsAudit.matchScore}<small>/100</small></strong><p>{atsAudit.matched.length} requisitos respaldados</p></article> : null}
-                <article><span>Cambios</span><strong>{improvementAnalysis.changes.length || diffSummary.changed}</strong><p>{improvementAnalysis.changes.length || diffSummary.changed ? "mejoras explicadas en esta versión" : "sin cambios de contenido"}</p></article>
+                <article><span>Cambios</span><strong>{improvementAnalysis.changes.length}</strong><p>{improvementAnalysis.changes.length ? "mejoras explicadas en esta versión" : "sin cambios de contenido"}</p></article>
               </div> : null}
-              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation"><summary><span>Qué cambió en esta versión</span><small>{improvementAnalysis.changes.length} cambios</small></summary><div>{improvementAnalysis.changes.map((change, index) => <article key={`${change.section}-${index}`}><span>{change.section || "Contenido"}</span><div><small>Antes</small><p>{change.before || "—"}</p></div><div><small>Después</small><p>{change.after || "—"}</p></div><strong>{change.reason}</strong></article>)}</div></details> : null}
+              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && improvementAnalysis.changes.length ? <details className="step-explanation changes-explanation"><summary><span><b>Qué cambió en esta versión</b><small>Compará cada ajuste y por qué lo hicimos</small></span><span className="change-count">{improvementAnalysis.changes.length} {improvementAnalysis.changes.length === 1 ? "cambio" : "cambios"}<ChevronDown size={15} /></span></summary><div className="change-list">{improvementAnalysis.changes.map((change, index) => <article className="change-card" key={`${change.section}-${index}`}><header><span className="change-index">{String(index + 1).padStart(2, "0")}</span><div><small>Sección modificada</small><h3>{change.section || "Contenido"}</h3></div></header><div className="change-comparison"><section className="change-before" aria-label="Contenido anterior"><small>Antes</small><p>{change.before || "—"}</p></section><section className="change-after" aria-label="Contenido mejorado"><small>Después</small><p>{change.after || "—"}</p></section></div>{change.reason ? <div className="change-reason"><small>Por qué lo cambiamos</small><p>{change.reason}</p></div> : null}</article>)}</div></details> : null}
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.matchScore !== null ? <details className="step-explanation match-explanation"><summary><span>Cómo calculamos la coincidencia</span><small>{atsAudit.matchScore}/100</small></summary><div className="match-breakdown"><p><strong>{atsAudit.matched.length}</strong><span>requisitos respaldados</span></p><p><strong>{atsAudit.missing.length}</strong><span>ausentes o sin evidencia</span></p><small>El puntaje es el porcentaje de requisitos detectados en la oferta que aparecen explícitamente, mediante una equivalencia clara o con evidencia suficiente en el CV.</small>{atsAudit.matched.length ? <div><b>Cubiertos</b>{atsAudit.matched.join(" · ")}</div> : null}{atsAudit.missing.length ? <div><b>Por trabajar</b>{atsAudit.missing.join(" · ")}</div> : null}</div></details> : null}
-              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.checks.some((check) => !check.pass) ? <div className="step-findings"><strong>Feedback de los agentes</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 3).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div> : null}
+              {(workflowStep === 3 || workflowStep === 4 && iterationComplete) && atsAudit.checks.some((check) => !check.pass) ? <details className="step-explanation findings-details"><summary><span>Ver recomendaciones</span><small>{atsAudit.checks.filter((check) => !check.pass).length}</small></summary><div className="step-findings"><strong>Recomendaciones</strong>{atsAudit.checks.filter((check) => !check.pass).slice(0, 3).map((check) => <p key={check.label}><X size={13} /><span>{check.label}<small>{check.fix}</small></span></p>)}</div></details> : null}
               {workflowStep === 4 && !iterationComplete && activeQuestion ? <div className="agent-questions question-stepper">
                 <div className="question-head"><div><strong>{activeQuestion.freeform ? "Información adicional" : "Preguntas para aumentar la coincidencia"}</strong><p>{activeQuestion.freeform ? "Este último campo siempre es opcional." : "Respondé sólo lo que puedas confirmar."}</p></div><div className="question-counter"><span>{activeQuestionIndex + 1} / {iterationSteps.length}</span>{!activeQuestion.freeform ? <button type="button" onClick={() => setActiveQuestionIndex(iterationSteps.length - 1)}>Saltar todas</button> : null}</div></div>
                 <div className="question-progress" aria-label={`Paso ${activeQuestionIndex + 1} de ${iterationSteps.length}`}>{iterationSteps.map((question, index) => { const key = question.id || index; const answered = question.freeform ? feedbackNote.trim() : questionQuickAnswers[key] || questionAnswers[key]?.trim(); return <i key={key} className={index === activeQuestionIndex ? "active" : answered ? "answered" : index < activeQuestionIndex ? "skipped" : ""} />; })}</div>
                 <div className="question-card"><span>{String(activeQuestionIndex + 1).padStart(2, "0")}</span><div><strong>{activeQuestion.question}</strong>{activeQuestion.why ? <small>{activeQuestion.why}</small> : null}{activeQuestion.freeform ? <textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} placeholder="Más datos, contexto o cambios que quieras pedir…" rows={4} autoFocus /> : <><div className="quick-answers" role="group" aria-label="Respuesta rápida">{activeQuickAnswers.map((answer) => { const questionKey = activeQuestion.id || activeQuestionIndex; const selected = questionQuickAnswers[questionKey] === answer; return <button key={answer} type="button" aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setQuestionQuickAnswers((current) => ({ ...current, [questionKey]: answer })); setActiveQuestionIndex((index) => Math.min(iterationSteps.length - 1, index + 1)); }}>{selected ? <Check size={14} /> : null}{answer}</button>; })}</div><details className="answer-details" open={Boolean(questionAnswers[activeQuestion.id || activeQuestionIndex])}><summary>Agregar contexto</summary><textarea value={questionAnswers[activeQuestion.id || activeQuestionIndex] || ""} onChange={(event) => setQuestionAnswers((current) => ({ ...current, [activeQuestion.id || activeQuestionIndex]: event.target.value }))} placeholder="Aclaración opcional…" rows={3} /></details></>}</div></div>
                 <div className="question-actions">
-                  <button type="button" disabled={activeQuestionIndex === 0} onClick={() => setActiveQuestionIndex((index) => Math.max(0, index - 1))}>Anterior</button>
-                  {activeQuestionIndex < iterationSteps.length - 1 ? <><button type="button" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Omitir</button><button type="button" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Siguiente <ArrowRight size={14} /></button></> : <button type="button" onClick={() => (feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim())) ? applyRevisionFeedback() : setIterationComplete(true)}>{feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim()) ? "Generar nueva versión" : "Omitir y continuar"}</button>}
+                  <button type="button" className="tertiary-action" disabled={activeQuestionIndex === 0} onClick={() => setActiveQuestionIndex((index) => Math.max(0, index - 1))}>Anterior</button>
+                  {activeQuestionIndex < iterationSteps.length - 1 ? <><button type="button" className="tertiary-action" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Omitir</button><button type="button" className="primary-action" onClick={() => setActiveQuestionIndex((index) => index + 1)}>Siguiente <ArrowRight size={14} /></button></> : <button type="button" className="primary-action" onClick={() => (feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim())) ? applyRevisionFeedback() : setIterationComplete(true)}>{feedbackNote.trim() || Object.values(questionQuickAnswers).some(Boolean) || Object.values(questionAnswers).some((answer) => String(answer).trim()) ? "Generar nueva versión" : "Continuar sin cambios"}</button>}
                 </div>
               </div> : null}
               {workflowStep === 5 && pdfError ? <div className="final-download-error" role="alert"><X size={14} />{pdfError}</div> : null}
               <div className="step-feedback">
-                <button className="step-back" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
-                {workflowStep === 5 ? <button type="button" className="start-new-flow" onClick={resetFlow}><RotateCcw size={15} /> Empezar un nuevo proceso</button> : null}
-                {workflowStep === 3 ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> Esta versión está lista</button><button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button></> : null}
-                {workflowStep === 4 && iterationComplete ? <><button onClick={() => setWorkflowStep(5)}><Check size={15} /> {perfectMatch ? "Confirmar versión ideal" : "Este CV está listo"}</button>{!perfectMatch ? <button onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir iterando</button> : null}</> : null}
-                <a className={`preview-link mobile-only ${workflowStep === 5 ? "secondary-preview" : ""}`} href="#preview-document"><FileText size={15} /> Revisar preview</a>
-                <button type="button" className={`preview-link desktop-only ${workflowStep === 5 ? "secondary-preview" : ""}`} aria-expanded={previewOpen} onClick={togglePreview}><FileText size={15} /> {previewOpen ? "Ocultar preview" : "Revisar preview"}</button>
-                {workflowStep === 5 ? <button type="button" className="final-download" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar PDF"}</button> : null}
+                <button type="button" className="step-back tertiary-action" onClick={() => workflowStep === 3 || improvementSkipped ? withViewTransition(() => { setPhase("context"); setStatus("context-ready"); setImprovementSkipped(false); }, "step") : workflowStep === 5 ? (setWorkflowStep(4), setIterationComplete(true)) : iterationComplete ? setWorkflowStep(3) : setWorkflowStep(3)}>← Volver</button>
+                {workflowStep === 5 ? <button type="button" className="start-new-flow tertiary-action" onClick={resetFlow}><RotateCcw size={15} /> Empezar de nuevo</button> : null}
+                {workflowStep === 3 ? <><button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); setWorkflowStep(4); }}><Sparkles size={15} /> Seguir mejorando</button><button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}
+                {workflowStep === 4 && iterationComplete ? <>{!perfectMatch ? <button type="button" className="secondary-action" onClick={() => { setActiveQuestionIndex(0); setIterationComplete(false); }}><Sparkles size={15} /> Seguir mejorando</button> : null}<button type="button" className="primary-action" onClick={() => setWorkflowStep(5)}><Check size={15} /> Confirmar cambios</button></> : null}
+                {workflowStep === 5 ? <button type="button" className="final-download primary-action" onClick={downloadPdf} disabled={pdfStatus === "generating"}><Download size={15} /> {pdfStatus === "generating" ? "Generando PDF…" : "Descargar CV en PDF"}</button> : null}
               </div>
             </div>
           </section>
         ) : null}
         {error && <div className="error"><X size={17} />{error}</div>}
-        {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> La versión queda en este dispositivo</span><span><Check size={15} /> No inventamos experiencia</span><span><FileText size={15} /> Formato legible para ATS</span></div> : null}
+        {!inFlow ? <div className="trust"><span><LockKeyhole size={15} /> Tu versión queda en este dispositivo</span><span><Target size={15} /> Optimizado para tu oferta</span></div> : null}
       </section>
 
       {status === "ready" && (
@@ -1081,8 +1019,6 @@ function App() {
             <div className="audit-grid">{atsAudit.checks.map((check) => <div className={check.pass ? "audit-pass" : "audit-fail"} key={check.label}>{check.pass ? <Check size={14} /> : <X size={14} />}<span>{check.label}</span>{!check.pass && <small>{check.fix}</small>}</div>)}{atsAudit.keywordCheck && <div className={atsAudit.keywordCheck.pass ? "audit-pass" : "audit-fail"}>{atsAudit.keywordCheck.pass ? <Check size={14} /> : <X size={14} />}<span>{atsAudit.keywordCheck.label}</span>{!atsAudit.keywordCheck.pass && <small>{atsAudit.keywordCheck.fix}</small>}</div>}</div>
             {(jobAnalysis.requested || atsAudit.keywordCheck) && <div className="keyword-coverage">{atsAudit.keywordCheck ? <><p><strong>Requisitos detectados</strong>{keywordLabels.join(" · ")}</p><p><strong>Presentes en tu CV</strong>{atsAudit.matched.length ? atsAudit.matched.join(" · ") : "Ninguno detectado"}</p>{atsAudit.inferred.length > 0 && <p><strong>Equivalentes respaldados</strong>{atsAudit.inferred.map((item) => `${item.term}${item.evidence ? ` — ${item.evidence}` : ""}`).join(" · ")}</p>}<p><strong>Ausentes o sin respaldo</strong>{atsAudit.missing.length ? atsAudit.missing.join(" · ") : "Ninguno"}</p><small>Solo contamos coincidencias respaldadas por tu experiencia. Nunca agregamos requisitos que no puedas demostrar.</small></> : <><p><strong>Requisitos detectados</strong>Ninguno</p><small>{jobAnalysis.sourceRead ? "Leímos la oferta, pero no identificamos requisitos laborales confiables. Revisá el contenido y actualizá el análisis." : "No pudimos leer la oferta. Si el sitio bloquea el acceso, definí manualmente tu objetivo y actualizá el análisis."}</small></>}</div>}
           </details>
-          {allowImprovement && diffSummary.changed > 0 && <details className="diff-details"><summary><span>Qué cambió en la mejora</span><small>{diffSummary.changed} líneas nuevas</small></summary><div className="diff-list">{diffSummary.lines.map((line, index) => <div key={index}><span>+</span><code>{line.replace(/\\\\(?:\[.*?\])?$/, "")}</code></div>)}</div></details>}
-          {versions.length > 1 ? <div className="result-tools"><span /><details className="versions"><summary>Historial ({versions.length})</summary><div>{versions.map((version) => <button key={version.id} onClick={() => setLatex(version.latex)}><span>{version.mode} · {version.role || "sin puesto"}</span><small>{new Date(version.createdAt).toLocaleString("es-AR")}</small></button>)}</div></details></div> : null}
           <div className="reprocess-note">
             <span>¿Cambiaste algún ajuste?</span>
             <button type="button" onClick={() => processFile(file)} disabled={status === "reading"}><Sparkles size={14} /> Actualizar el análisis</button>
@@ -1092,9 +1028,10 @@ function App() {
             <div className="workspace-content preview-only">
               <div className="preview-pane">
                 <div className="paper-wrap">
-                  <article className="latex-paper">
+                  <article className="resume-paper">
                     <h1>{preview.name}</h1>
-                    {preview.contact && <p className="paper-contact">{preview.contact}</p>}
+                    {preview.headline ? <p className="paper-headline">{preview.headline}</p> : null}
+                    {preview.contactLine ? <p className="paper-contact">{preview.contactLine}</p> : null}
                     <hr />
                     {preview.sections.map((section, index) => (
                       <section key={`${section.title}-${index}`}>
@@ -1113,18 +1050,33 @@ function App() {
         </section>
       )}
 
+      {!inFlow ? <section className="ats-section" aria-labelledby="ats-title">
+        <div className="ats-heading">
+          <span className="ats-badge">ATS</span>
+          <div><span className="section-num">APPLICANT TRACKING SYSTEM</span><small>EL PRIMER FILTRO DE TU POSTULACIÓN</small></div>
+        </div>
+        <div className="ats-content">
+          <h2 id="ats-title">El sistema que lee tu CV antes que una persona.</h2>
+          <div className="ats-copy"><span className="section-num">¿QUÉ ES UN ATS?</span><p>Es la herramienta que muchas empresas usan para recibir, ordenar y filtrar currículums.</p><strong>Preparamos tu CV para que lo interprete correctamente y encuentre lo relevante para la oferta.</strong></div>
+        </div>
+      </section> : null}
+
       {!inFlow ? <section className="how" id="como-funciona">
-        <div><span className="section-num">01—04</span><h2>No cambia tu historia.<br />Cambia cómo se entiende.</h2><p className="how-intro">Trama trabaja con evidencia de tu experiencia y te deja el control de cada decisión.</p></div>
+        <div><span className="section-num">CÓMO FUNCIONA</span><h2>Mejoramos tu CV<br />para la oferta que querés.</h2><p className="how-intro">Analizamos qué busca la empresa y preparamos una versión de tu CV con mayor coincidencia, lista para postularte.</p></div>
         <div className="steps">
-          <article><b>01</b><h3>Leemos tu CV</h3><p>Reconstruimos su contenido y auditamos si los sistemas ATS pueden interpretarlo correctamente.</p></article>
-          <article><b>02</b><h3>Entendemos el puesto</h3><p>Leemos la oferta o tu objetivo y detectamos requisitos, lenguaje y prioridades.</p></article>
-          <article><b>03</b><h3>Mejoramos con evidencia</h3><p>Reescribimos y priorizamos lo que tu trayectoria respalda. Si falta contexto, te preguntamos.</p></article>
-          <article><b>04</b><h3>Vos decidís</h3><p>Comparás cambios, iterás y descargás tu CV en PDF. También podés crear una carta de presentación.</p></article>
+          <article><b>01</b><h3>Analizamos tu CV</h3><p>Detectamos fortalezas y oportunidades de mejora.</p></article>
+          <article><b>02</b><h3>Entendemos la oferta</h3><p>Identificamos los requisitos que más importan.</p></article>
+          <article><b>03</b><h3>Mejoramos la coincidencia</h3><p>Ajustamos el contenido para destacar lo más relevante.</p></article>
+          <article><b>04</b><h3>Te damos el resultado</h3><p>Revisás los cambios y descargás tu CV listo para enviar.</p></article>
         </div>
       </section> : null}
 
       {!inFlow ? <section className="deliverables" aria-labelledby="deliverables-title">
-        <div className="deliverables-heading"><span className="section-num">EL RESULTADO</span><h2 id="deliverables-title">Sabés qué cambió.<br />Y por qué.</h2></div>
+        <div className="deliverables-kicker">
+          <span className="deliverables-badge"><Check size={17} /></span>
+          <div><span className="section-num">EL RESULTADO</span><small>UNA VERSIÓN LISTA PARA ESA OPORTUNIDAD</small></div>
+        </div>
+        <div className="deliverables-heading"><h2 id="deliverables-title">Un CV más relevante.<br />Una postulación más fuerte.</h2><p>No recibís recomendaciones sueltas. Te llevás una versión optimizada para la oferta, revisada y lista para enviar.</p></div>
         <div className="deliverables-grid">
           <article><span>01</span><Target size={22} /><h3>Coincidencia con la oferta</h3><p>Ves qué requisitos ya respaldás y cuáles necesitan más evidencia.</p></article>
           <article><span>02</span><Sparkles size={22} /><h3>Mejoras explicadas</h3><p>Entendés cada ajuste de redacción antes de dar por lista la versión.</p></article>
@@ -1133,6 +1085,28 @@ function App() {
       </section> : null}
 
       {!inFlow ? <footer><a className="brand" href="/" onClick={returnHome}><span className="brand-mark">T</span><span>trama</span></a><p>Tu experiencia ya tiene valor.<br />Trama ayuda a mostrarlo.</p><span>Hecho en Argentina · 2026</span></footer> : null}
+
+      <dialog
+        ref={deleteDialogRef}
+        className="delete-dialog"
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+        onCancel={() => setDeleteDialogOpen(false)}
+        onClose={() => setDeleteDialogOpen(false)}
+        onClick={(event) => { if (event.target === event.currentTarget) setDeleteDialogOpen(false); }}
+      >
+        <div className="delete-dialog-card">
+          <div className="delete-dialog-icon" aria-hidden="true"><Trash2 size={22} strokeWidth={1.7} /></div>
+          <span className="kicker">BORRAR CV GUARDADO</span>
+          <h2 id="delete-dialog-title">¿Querés borrar este CV?</h2>
+          <p id="delete-dialog-description">Se va a eliminar únicamente de este dispositivo. Esta acción no se puede deshacer.</p>
+          {savedResume?.sourceFileName ? <div className="delete-dialog-file"><FileText size={16} /><span>{savedResume.sourceFileName}</span></div> : null}
+          <div className="delete-dialog-actions">
+            <button type="button" className="delete-dialog-cancel" onClick={() => setDeleteDialogOpen(false)}>Conservar CV</button>
+            <button type="button" className="delete-dialog-confirm" onClick={removeSavedResume}><Trash2 size={15} /> Sí, borrar CV</button>
+          </div>
+        </div>
+      </dialog>
     </main>
   );
 }

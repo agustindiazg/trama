@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadSavedResume, parseSavedResume, saveResume, SAVED_RESUME_STORAGE_KEY } from "./resume-storage.js";
+import { deleteSavedResume, loadSavedResume, parseSavedResume, saveResume, SAVED_RESUME_STORAGE_KEY } from "./resume-storage.js";
 
 const createStorage = () => {
   const values = new Map();
@@ -32,5 +32,14 @@ test("loadSavedResume removes corrupted entries", () => {
   storage.setItem(SAVED_RESUME_STORAGE_KEY, "not-json");
 
   assert.equal(loadSavedResume(storage), null);
+  assert.equal(storage.getItem(SAVED_RESUME_STORAGE_KEY), null);
+});
+
+test("deleteSavedResume removes the saved CV", () => {
+  const storage = createStorage();
+  storage.setItem(SAVED_RESUME_STORAGE_KEY, "saved-cv");
+
+  deleteSavedResume(storage);
+
   assert.equal(storage.getItem(SAVED_RESUME_STORAGE_KEY), null);
 });

@@ -19,11 +19,6 @@ const stem = (word) => word
   .replace(/(amientos|imientos|aciones|adores|adoras|mente)$/i, "")
   .replace(/(ing|ed|es|os|as|ar|er|ir|s)$/i, "");
 
-const latexToText = (latex) => latex
-  .replace(/\\href\{([^}]*)}\{([^}]*)}/g, "$1 $2")
-  .replace(/\\[a-zA-Z]+(?:\*|\[[^\]]*\])?(?:\{([^}]*)\})?/g, "$1 ")
-  .replace(/[{}\\]/g, " ");
-
 export const extractJobKeywords = (jobDescription, limit = 24) => {
   const normalized = normalize(jobDescription);
   if (!normalized) return [];
@@ -49,19 +44,21 @@ export const extractJobKeywords = (jobDescription, limit = 24) => {
     .slice(0, limit);
 };
 
-export const calculateAtsAudit = (latex, explicitKeywords = []) => {
-  const text = latexToText(latex);
+export const calculateAtsAudit = (source, explicitKeywords = [], options = {}) => {
+  const text = String(source || "");
   const normalizedText = normalize(text);
   const textStems = new Set(normalizedText.split(" ").map(stem));
-  const bulletCount = (latex.match(/\\item\b/g) || []).length;
+  const bulletCount = Number.isFinite(options.bulletCount)
+    ? options.bulletCount
+    : (text.match(/^\s*[•◦▪●‣-]\s+/gm) || []).length;
   const technicalChecks = [
-    { label: "Documento LaTeX válido", pass: /\\documentclass/.test(latex) && /\\begin\{document\}/.test(latex) && /\\end\{document\}/.test(latex), weight: 15 },
+    { label: "Contenido con texto extraíble", pass: text.trim().length >= 120, weight: 15, fix: "El PDF final debe conservar texto seleccionable y un orden de lectura claro." },
     { label: "Contacto detectable", pass: /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(text) || /https?:\/\//i.test(text), weight: 15, fix: "Agregá email, teléfono o portfolio visibles en el CV original." },
     { label: "Secciones ATS estándar", pass: /(experiencia|experience|educacion|education|habilidades|skills)/i.test(normalizedText), weight: 20, fix: "Usá headings claros como Experiencia, Educación y Habilidades." },
     { label: "Experiencia presentada con bullets", pass: bulletCount >= 3, weight: 15, fix: "Convertí responsabilidades y logros en al menos tres bullets concretos." },
     { label: "Verbos de acción", pass: /(logr|lider|cre|diseñ|desarroll|gestion|implement|mejor|dirig|optimiz|constru|analiz|built|led|designed|developed|managed|improved|delivered|increased|reduced)/i.test(normalizedText), weight: 15, fix: "Comenzá los bullets con verbos de acción." },
     { label: "Evidencia cuantificable", pass: /\b\d+(?:[.,]\d+)?\s*(?:%|k|m|anos|meses|usuarios|clientes|proyectos|personas|x)?\b/i.test(normalizedText), weight: 10, fix: "Agregá métricas reales; no inventes ninguna." },
-    { label: "Formato simple y legible", pass: !/\\begin\{(?:tabular|multicols|tikzpicture)\}/.test(latex) && text.trim().length >= 250, weight: 10, fix: "Evitá tablas, columnas complejas y documentos demasiado cortos." }
+    { label: "Formato simple y legible", pass: options.simpleLayout !== false && text.trim().length >= 250, weight: 10, fix: "Evitá tablas, columnas complejas y documentos demasiado cortos." }
   ];
 
   const seenKeywords = new Set();
