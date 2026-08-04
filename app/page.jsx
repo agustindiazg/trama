@@ -1131,46 +1131,54 @@ function App() {
       )}
 
       {!inFlow ? <section className="ats-section" aria-labelledby="ats-title">
-        <div className="ats-heading">
-          <span className="ats-badge">ATS</span>
-          <div><span className="section-num">APPLICANT TRACKING SYSTEM</span><small>EL PRIMER FILTRO DE TU POSTULACIÓN</small></div>
-        </div>
-        <div className="ats-content">
-          <h2 id="ats-title">El sistema que lee tu CV antes que una persona.</h2>
-          <div className="ats-copy"><span className="section-num">¿QUÉ ES UN ATS?</span><p>Es la herramienta que muchas empresas usan para recibir, ordenar y filtrar currículums.</p><strong>Preparamos tu CV para que lo interprete correctamente y encuentre lo relevante para la oferta.</strong></div>
+        <div className="landing-container">
+          <div className="ats-heading">
+            <span className="ats-badge">ATS</span>
+            <div><span className="section-num">APPLICANT TRACKING SYSTEM</span><small>EL PRIMER FILTRO DE TU POSTULACIÓN</small></div>
+          </div>
+          <div className="ats-content">
+            <h2 id="ats-title">El sistema que lee tu CV antes que una persona.</h2>
+            <div className="ats-copy"><span className="section-num">¿QUÉ ES UN ATS?</span><p>Es la herramienta que muchas empresas usan para recibir, ordenar y filtrar currículums.</p><strong>Preparamos tu CV para que lo interprete correctamente y encuentre lo relevante para la oferta.</strong></div>
+          </div>
         </div>
       </section> : null}
 
       {!inFlow ? <section className="how" id="como-funciona">
-        <div><span className="section-num">CÓMO FUNCIONA</span><h2>Mejoramos tu CV<br />para la oferta que querés.</h2><p className="how-intro">Analizamos qué busca la empresa y preparamos una versión de tu CV con mayor coincidencia, lista para postularte.</p></div>
-        <div className="steps">
-          <article><b>01</b><h3>Analizamos tu CV</h3><p>Detectamos fortalezas y oportunidades de mejora.</p></article>
-          <article><b>02</b><h3>Entendemos la oferta</h3><p>Identificamos los requisitos que más importan.</p></article>
-          <article><b>03</b><h3>Mejoramos la coincidencia</h3><p>Ajustamos el contenido para destacar lo más relevante.</p></article>
-          <article><b>04</b><h3>Te damos el resultado</h3><p>Revisás los cambios y descargás tu CV listo para enviar.</p></article>
+        <div className="landing-container how-content">
+          <div><span className="section-num">CÓMO FUNCIONA</span><h2>Mejoramos tu CV<br />para la oferta que querés.</h2><p className="how-intro">Analizamos qué busca la empresa y preparamos una versión de tu CV con mayor coincidencia, lista para postularte.</p></div>
+          <div className="steps">
+            <article><b>01</b><h3>Analizamos tu CV</h3><p>Detectamos fortalezas y oportunidades de mejora.</p></article>
+            <article><b>02</b><h3>Entendemos la oferta</h3><p>Identificamos los requisitos que más importan.</p></article>
+            <article><b>03</b><h3>Mejoramos la coincidencia</h3><p>Ajustamos el contenido para destacar lo más relevante.</p></article>
+            <article><b>04</b><h3>Te damos el resultado</h3><p>Revisás los cambios y descargás tu CV listo para enviar.</p></article>
+          </div>
         </div>
       </section> : null}
 
       {!inFlow ? <section className="deliverables" aria-labelledby="deliverables-title">
-        <div className="deliverables-kicker">
-          <span className="deliverables-badge"><Check size={17} /></span>
-          <div><span className="section-num">EL RESULTADO</span><small>UNA VERSIÓN LISTA PARA ESA OPORTUNIDAD</small></div>
-        </div>
-        <div className="deliverables-heading"><h2 id="deliverables-title">Un CV más relevante.<br />Una postulación más fuerte.</h2><p>No recibís recomendaciones sueltas. Te llevás una versión optimizada para la oferta, revisada y lista para enviar.</p></div>
-        <div className="deliverables-grid">
-          <article><span>01</span><Target size={22} /><h3>Coincidencia con la oferta</h3><p>Ves qué requisitos ya respaldás y cuáles necesitan más evidencia.</p></article>
-          <article><span>02</span><Sparkles size={22} /><h3>Mejoras explicadas</h3><p>Entendés cada ajuste de redacción antes de dar por lista la versión.</p></article>
-          <article><span>03</span><FileText size={22} /><h3>Documentos listos</h3><p>Descargás un PDF legible para ATS y, si compartiste una oferta, una carta de presentación coherente.</p></article>
+        <div className="landing-container">
+          <div className="deliverables-kicker">
+            <span className="deliverables-badge"><Check size={17} /></span>
+            <div><span className="section-num">EL RESULTADO</span><small>UNA VERSIÓN LISTA PARA ESA OPORTUNIDAD</small></div>
+          </div>
+          <div className="deliverables-heading"><h2 id="deliverables-title">Un CV más relevante.<br />Una postulación más fuerte.</h2><p>No recibís recomendaciones sueltas. Te llevás una versión optimizada para la oferta, revisada y lista para enviar.</p></div>
+          <div className="deliverables-grid">
+            <article><span>01</span><Target size={22} /><h3>Coincidencia con la oferta</h3><p>Ves qué requisitos ya respaldás y cuáles necesitan más evidencia.</p></article>
+            <article><span>02</span><Sparkles size={22} /><h3>Mejoras explicadas</h3><p>Entendés cada ajuste de redacción antes de dar por lista la versión.</p></article>
+            <article><span>03</span><FileText size={22} /><h3>Documentos listos</h3><p>Descargás un PDF legible para ATS y, si compartiste una oferta, una carta de presentación coherente.</p></article>
+          </div>
         </div>
       </section> : null}
 
       {!inFlow ? <footer className="site-footer">
-        <div className="footer-top">
-          <a className="brand footer-brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand inverse /></a>
-          <p>Tu experiencia tiene valor.<br /><em>Hagamos que se note.</em></p>
-          <a className="footer-cta" href="#top" onClick={(event) => { event.preventDefault(); window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }}>Preparar mi CV <ArrowUpRight size={18} /></a>
+        <div className="landing-container">
+          <div className="footer-top">
+            <a className="brand footer-brand" href="/" onClick={returnHome} aria-label="Trama, inicio"><Brand inverse /></a>
+            <p>Tu experiencia tiene valor.<br /><em>Hagamos que se note.</em></p>
+            <a className="footer-cta" href="#top" onClick={(event) => { event.preventDefault(); window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }}>Preparar mi CV <ArrowUpRight size={18} /></a>
+          </div>
+          <div className="footer-bottom"><span>Tu experiencia, mejor presentada.</span><span>Hecho con intención en Argentina · 2026</span><span>Privado por diseño</span></div>
         </div>
-        <div className="footer-bottom"><span>Tu experiencia, mejor presentada.</span><span>Hecho con intención en Argentina · 2026</span><span>Privado por diseño</span></div>
       </footer> : null}
 
       <dialog
