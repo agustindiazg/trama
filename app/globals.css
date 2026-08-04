@@ -155,7 +155,7 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; }
 .compact-progress span { color: #68736c; }
 .compact-progress strong { color: var(--ink); font: 650 10px "DM Mono"; letter-spacing: .035em; text-transform: uppercase; }
 .visual-flow-progress { padding: 22px 30px 20px; border-bottom: 1px solid #b8bcb4; background: rgba(23,35,29,.025); }
-.visual-flow-progress ol { margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; list-style: none; }
+.visual-flow-progress ol { margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--flow-step-count, 5), minmax(0, 1fr)); gap: 16px; list-style: none; }
 .visual-flow-progress li { min-width: 0; color: #89918c; }
 .visual-flow-progress li > button, .visual-flow-progress li > div { width: 100%; padding: 0; display: grid; gap: 9px; color: inherit; border: 0; outline: 0; background: transparent; text-align: left; font: inherit; }
 .visual-flow-progress li > button { cursor: pointer; }

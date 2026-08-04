@@ -89,19 +89,20 @@ function TramaLogo({ inverse = false }) {
   );
 }
 
-const flowStepLabels = ["Subir CV", "Objetivo", "Revisar versión", "Mejorar", "Descargar"];
+const flowStepLabels = ["Subir CV", "Enfoque", "Procesamiento", "Feedback", "Iteración", "Descargar"];
+const personalizedFlowStepLabels = ["Subir CV", "Enfoque", "Oferta", "Procesamiento", "Feedback", "Iteración", "Descargar"];
 
-function VisualFlowProgress({ currentStep, onStepClick }) {
+function VisualFlowProgress({ currentStep, onStepClick, labels = flowStepLabels, nonNavigableSteps = [] }) {
   return (
-    <nav className="visual-flow-progress" aria-label={`Progreso: paso ${currentStep} de ${flowStepLabels.length}`}>
-      <ol>
-        {flowStepLabels.map((label, index) => {
+    <nav className="visual-flow-progress" aria-label={`Progreso: paso ${currentStep} de ${labels.length}`}>
+      <ol style={{ "--flow-step-count": labels.length }}>
+        {labels.map((label, index) => {
           const step = index + 1;
           const state = step < currentStep ? "done" : step === currentStep ? "active" : "pending";
           const content = <><span aria-hidden="true" /><strong>{label}</strong></>;
           return (
             <li key={label} className={state} aria-current={state === "active" ? "step" : undefined}>
-              {state === "done" ? <button type="button" onClick={() => onStepClick?.(step)} aria-label={`Volver a ${label}`}>{content}</button> : <div>{content}</div>}
+              {state === "done" && !nonNavigableSteps.includes(step) ? <button type="button" onClick={() => onStepClick?.(step)} aria-label={`Volver a ${label}`}>{content}</button> : <div>{content}</div>}
             </li>
           );
         })}
@@ -822,6 +823,10 @@ function App() {
     }, "expand");
   }, []);
   const canPersonalize = jobInputMode === "url" ? isValidJobUrl(jobUrl) : Boolean(targetRole.trim());
+  const isPersonalizedFlow = resumeGoal === "personalize";
+  const activeFlowStepLabels = isPersonalizedFlow ? personalizedFlowStepLabels : flowStepLabels;
+  const processingFlowStep = isPersonalizedFlow ? 4 : 3;
+  const visualWorkflowStep = (step) => isPersonalizedFlow ? step + 2 : step + 1;
   const navigateToFlowStep = (targetStep, currentStep) => {
     if (targetStep >= currentStep) return;
     flowIdRef.current += 1;
@@ -836,11 +841,18 @@ function App() {
         setPhase("context");
         setStatus("context-ready");
         setImprovementSkipped(false);
+        if (isPersonalizedFlow) setResumeGoal(null);
+      } else if (isPersonalizedFlow && targetStep === 3) {
+        setPhase("context");
+        setStatus("context-ready");
+        setImprovementSkipped(false);
+        setResumeGoal("personalize");
       } else {
         setPhase("result");
         setStatus("ready");
-        setWorkflowStep(targetStep);
-        if (targetStep === 4) setIterationComplete(true);
+        const workflowTarget = isPersonalizedFlow ? targetStep - 2 : targetStep - 1;
+        setWorkflowStep(workflowTarget);
+        if (workflowTarget === 4) setIterationComplete(true);
       }
     }, "step");
   };
@@ -962,7 +974,7 @@ function App() {
           </section>
         ) : phase === "context" ? (
           <form className="context-step" onSubmit={continueWithContext}>
-            <VisualFlowProgress currentStep={2} onStepClick={(step) => navigateToFlowStep(step, 2)} />
+            <VisualFlowProgress currentStep={isPersonalizedFlow ? 3 : 2} labels={activeFlowStepLabels} nonNavigableSteps={[processingFlowStep]} onStepClick={(step) => navigateToFlowStep(step, isPersonalizedFlow ? 3 : 2)} />
             {resumeGoal !== "personalize" ? <>
               <div className="context-heading choice-heading"><span className="kicker">ELEGÍ EL ENFOQUE</span><h2>¿Qué querés hacer con tu CV?</h2><p>Podés adaptarlo a una búsqueda concreta o mejorarlo sin enfocarlo en una oferta.</p></div>
               <div className="goal-choices" role="group" aria-label="Elegí cómo mejorar tu CV">
@@ -1015,7 +1027,7 @@ function App() {
           </form>
         ) : phase === "waiting" ? (
           <section className="context-step waiting-step" aria-live="polite">
-            <VisualFlowProgress currentStep={3} onStepClick={(step) => navigateToFlowStep(step, 3)} />
+            <VisualFlowProgress currentStep={processingFlowStep} labels={activeFlowStepLabels} nonNavigableSteps={[processingFlowStep]} onStepClick={(step) => navigateToFlowStep(step, processingFlowStep)} />
             <div className="waiting-orbit">{queuedContext?.skipImprovement ? <FileText size={24} /> : <Sparkles size={24} />}</div>
             <h2>{queuedContext?.skipImprovement ? "Estamos preparando tu CV." : "Estamos mejorando tu CV."}</h2>
             <p>{queuedContext?.mode === "general" ? "Estamos optimizando su claridad, estructura e impacto profesional." : queuedContext?.skipImprovement ? "Enseguida vas a poder revisarlo y descargarlo." : "Lo estamos adaptando al objetivo con la experiencia que compartiste."}</p>
@@ -1023,10 +1035,10 @@ function App() {
           </section>
         ) : phase === "result" ? (
           <section className="context-step improvement-step" id="flujo-mejoras">
-            {workflowStep === 4 && !iterationComplete && activeQuestion ? null : <VisualFlowProgress currentStep={workflowStep} onStepClick={(step) => navigateToFlowStep(step, workflowStep)} />}
+            <VisualFlowProgress currentStep={visualWorkflowStep(workflowStep)} labels={activeFlowStepLabels} nonNavigableSteps={[processingFlowStep]} onStepClick={(step) => navigateToFlowStep(step, visualWorkflowStep(workflowStep))} />
             <div className={`improvement-content ${status === "revising" ? "is-loading" : ""} ${workflowStep === 4 && !iterationComplete && activeQuestion ? "is-personalizing" : ""}`}>
               <div className="improvement-scroll-content">
-              {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">PASO 04 · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
+              {status === "revising" ? <div className="revision-loading" aria-live="polite"><div className="waiting-orbit"><Sparkles size={24} /></div><span className="kicker">ITERACIÓN · GENERANDO OTRA VERSIÓN</span><h2>Estamos incorporando tus respuestas.</h2><p>Contrastamos cada dato con el CV y recalculamos las mejoras sin inventar información.</p><div className="waiting-lines"><i /></div></div> : null}
               <h2>{workflowStep === 3 ? "Ya mejoramos tu CV." : workflowStep === 4 ? iterationComplete ? perfectMatch ? "Llegamos a la versión ideal para esta oportunidad." : "La nueva versión ya está lista." : "Hagamos una nueva iteración." : improvementSkipped ? "Tu CV está listo, sin cambios." : "Tu CV ya está listo."}</h2>
               <p>{workflowStep === 3 ? "Revisá el resultado y elegí si está listo." : workflowStep === 4 ? iterationComplete ? "Revisá el resultado o hacé otra iteración." : "Respondé solo lo que puedas confirmar." : improvementSkipped ? "No aplicamos cambios al contenido." : "Descargá la versión lista para postularte."}</p>
               {(workflowStep === 3 || workflowStep === 4 && iterationComplete || workflowStep === 5) ? <div className="content-preview-action">
@@ -1103,7 +1115,7 @@ function App() {
             </div>
           </header>
           {pdfError ? <div className="pdf-error" role="alert"><X size={14} />{pdfError}</div> : null}
-          {phase !== "overview" ? <div className="result-stepper"><a href="#flujo-mejoras">Volver al flujo</a><span>CV <Check size={12} /></span><i /><span>{improvementSkipped ? "Sin objetivo" : "Objetivo"} <Check size={12} /></span><i /><span className={workflowStep === 3 ? "active" : ""}>{improvementSkipped ? "Sin mejoras" : "CV mejorado"}</span><i /><span className={workflowStep === 4 ? "active" : ""}>{improvementSkipped ? "Omitido" : "Seguir mejorando"}</span><i /><span className={workflowStep === 5 ? "active" : ""}>Final</span></div> : null}
+          {phase !== "overview" ? <div className="result-stepper"><a href="#flujo-mejoras">Volver al flujo</a><span>Subir CV <Check size={12} /></span><i /><span>Enfoque <Check size={12} /></span>{isPersonalizedFlow ? <><i /><span>Oferta <Check size={12} /></span></> : null}<i /><span>Procesamiento <Check size={12} /></span><i /><span className={workflowStep === 3 ? "active" : ""}>Feedback</span><i /><span className={workflowStep === 4 ? "active" : ""}>Iteración</span><i /><span className={workflowStep === 5 ? "active" : ""}>Descargar</span></div> : null}
           {false ? <>
           <div className="result-head">
             <div><span className="kicker">TU CV MEJORADO ESTÁ LISTO</span><h2>Tu experiencia ahora se entiende mejor.</h2><p>{file.name} · {pages || "—"} {pages === 1 ? "página" : "páginas"} · {allowImprovement && targetRole.trim() ? `preparado para ${targetRole.trim()}` : "preparado para sistemas de selección"}</p></div>
